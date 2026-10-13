@@ -1,0 +1,1043 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Interactive map of how an LLM is built, how your data is prepared and how a question becomes an answer.">
+<style>:root{color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
+<title>LLM Pipeline Explorer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: three colour-coded lanes (A model build, B data prep, C question time) act as a clickable map; the open stage sits below with a live "Try it" lab, then explanation, parameters and system notes. */
+:root{
+  --bg:#f3f5fb;--surface:#ffffff;--surface2:#eceff8;--fg:#141830;--muted:#566079;--line:#d6dbea;
+  --a:#5a3df0;--a-soft:#ece8ff;--a-ink:#ffffff;--a-text:#4727d4;
+  --b:#0a7a6e;--b-soft:#d6f3ee;--b-ink:#ffffff;--b-text:#06594f;
+  --c:#b25a00;--c-soft:#ffebcb;--c-ink:#ffffff;--c-text:#8a4500;
+  --good:#17803f;--bad:#c0392b;
+  --display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --sans:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0c0f1f;--surface:#151a30;--surface2:#1d2342;--fg:#eceffb;--muted:#9ba5c8;--line:#2b3258;
+  --a:#a898ff;--a-soft:#272058;--a-ink:#15102f;--a-text:#bfb3ff;
+  --b:#3ccbb8;--b-soft:#0f3b3a;--b-ink:#06201d;--b-text:#72e3d4;
+  --c:#ffb04a;--c-soft:#4a3010;--c-ink:#2a1700;--c-text:#ffca87;
+  --good:#4ade80;--bad:#ff8f80;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c0f1f;--surface:#151a30;--surface2:#1d2342;--fg:#eceffb;--muted:#9ba5c8;--line:#2b3258;
+  --a:#a898ff;--a-soft:#272058;--a-ink:#15102f;--a-text:#bfb3ff;
+  --b:#3ccbb8;--b-soft:#0f3b3a;--b-ink:#06201d;--b-text:#72e3d4;
+  --c:#ffb04a;--c-soft:#4a3010;--c-ink:#2a1700;--c-text:#ffca87;
+  --good:#4ade80;--bad:#ff8f80;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--sans)}
+*{box-sizing:border-box}
+[data-path="A"]{--p:var(--a);--p-soft:var(--a-soft);--p-ink:var(--a-ink);--p-text:var(--a-text)}
+[data-path="B"]{--p:var(--b);--p-soft:var(--b-soft);--p-ink:var(--b-ink);--p-text:var(--b-text)}
+[data-path="C"]{--p:var(--c);--p-soft:var(--c-soft);--p-ink:var(--c-ink);--p-text:var(--c-text)}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:22px 56px}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.15;text-wrap:balance}
+h1{font-size:clamp(26px,4.4vw,40px);letter-spacing:-.01em}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.sub{color:var(--muted);max-width:68ch;margin:10px 0 0}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:18px 0 12px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:3px;background:var(--p)}
+.map{display:flex;flex-direction:column;gap:10px}
+.lane{display:grid;grid-template-columns:168px minmax(0,1fr);gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-left:5px solid var(--p);border-radius:10px;background:var(--surface)}
+.lane-name{font-family:var(--display);font-weight:700;font-size:15px;line-height:1.2;color:var(--p-text)}
+.lane-name small{display:block;font:400 12px/1.3 var(--sans);color:var(--muted);margin-top:3px}
+.steps{display:flex;align-items:center;gap:4px;overflow-x:auto;padding:2px 2px 6px}
+.arrow{color:var(--muted);flex:0 0 auto;font-size:12px}
+.step{flex:0 0 auto;display:inline-flex;gap:6px;align-items:center;white-space:nowrap;font:500 13px/1.2 var(--sans);color:var(--p-text);background:var(--p-soft);border:1.5px solid var(--p);border-radius:8px;padding:7px 10px;cursor:pointer}
+.step b{font:500 12px var(--mono)}
+.step:hover{filter:brightness(.97)}
+.step[aria-current="true"]{background:var(--p);color:var(--p-ink)}
+:focus-visible{outline:3px solid var(--p,var(--fg));outline-offset:2px}
+.wires{font-size:13px;color:var(--muted);margin:10px 2px 18px}
+.wires b{color:var(--fg);font-weight:600}
+.stage{background:var(--surface);border:1px solid var(--line);border-top:6px solid var(--p);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:18px}
+.s-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.badge{font:700 18px/1 var(--mono);background:var(--p);color:var(--p-ink);padding:10px 12px;border-radius:9px;flex:0 0 auto}
+.s-title{flex:1 1 280px;min-width:0}
+.s-title h2{font-size:clamp(22px,3.2vw,30px)}
+.s-title p{margin:6px 0 0;color:var(--muted);max-width:70ch}
+.nav{display:flex;gap:8px;flex:0 0 auto}
+.btn{font:500 13px/1 var(--sans);padding:9px 12px;border-radius:8px;border:1.5px solid var(--p);background:var(--surface);color:var(--p-text);cursor:pointer}
+.btn:hover{background:var(--p-soft)}
+.btn.solid{background:var(--p);color:var(--p-ink)}
+.btn.sm{padding:6px 9px;font-size:12px}
+.shape{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;background:var(--surface2);border-radius:9px;padding:9px 12px;min-width:0}
+.shape span{font:500 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--p-text)}
+.shape code{font:13px/1.45 var(--mono);overflow-wrap:anywhere;min-width:0}
+.lab{border:1.5px solid var(--p);border-radius:11px;padding:16px;background:color-mix(in srgb,var(--p-soft) 38%,var(--surface));min-width:0}
+.lab>h3{font-size:14px;font-family:var(--mono);font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--p-text);margin-bottom:12px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.cols>section{min-width:0}
+.cols h3{font-size:16px;margin-bottom:8px;color:var(--p-text)}
+.cols p,.cols li{font-size:14.5px}
+.cols p{margin:0 0 8px}
+.cols ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+dl{margin:0;display:flex;flex-direction:column;gap:9px}
+dt{font:500 13px/1.3 var(--mono);color:var(--p-text)}
+dd{margin:2px 0 0;font-size:13.5px;color:var(--muted)}
+dd b{color:var(--fg);font-weight:600}
+.ctls{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;margin-bottom:12px}
+.ctl{display:inline-flex;align-items:center;gap:8px;font-size:13px;min-width:0}
+.ctl-l{color:var(--muted)}
+.ctl input[type=range]{width:150px;max-width:100%;accent-color:var(--p)}
+.ctl select,.ctl input[type=text],textarea{font:14px var(--sans);color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 8px;max-width:100%}
+.ctl input[type=checkbox]{accent-color:var(--p);width:16px;height:16px}
+output{font:500 13px var(--mono);min-width:3.4em;color:var(--fg)}
+textarea{width:100%;resize:vertical;min-height:58px}
+.tok{display:inline-flex;flex-direction:column;align-items:center;padding:3px 8px;margin:2px;border-radius:7px;background:var(--p-soft);color:var(--p-text);border:1px solid color-mix(in srgb,var(--p) 40%,transparent);font:13px var(--mono);white-space:pre}
+.tok small{font-size:10px;color:var(--muted)}
+button.tok{cursor:pointer}
+button.tok[aria-pressed="true"]{background:var(--p);color:var(--p-ink)}
+button.tok[aria-pressed="true"] small{color:var(--p-ink)}
+.tok.na{border-style:dashed}
+.note{font-size:13.5px;color:var(--muted);margin:8px 0 0}
+.note b{color:var(--fg)}
+.callout{border-left:4px solid var(--p);background:var(--p-soft);padding:9px 12px;border-radius:0 8px 8px 0;font-size:14px;margin-top:10px}
+.callout b{color:var(--p-text)}
+.vec{display:flex;gap:2px;height:76px;align-items:stretch;overflow-x:auto;padding-bottom:2px}
+.vec .col{position:relative;flex:1 0 9px;min-width:9px;max-width:22px}
+.vec .col i{position:absolute;left:0;right:0;background:var(--p);border-radius:2px}
+.vec .col::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+.dimbars{display:grid;gap:5px;font:12.5px var(--mono)}
+.dimbars div{display:grid;grid-template-columns:70px minmax(0,1fr) 40px;align-items:center;gap:8px}
+.dimbars .tr{height:10px;background:var(--surface2);border-radius:5px;overflow:hidden}
+.dimbars .tr i{display:block;height:100%;background:var(--p);border-radius:5px}
+.hm{display:grid;grid-template-columns:auto repeat(5,minmax(46px,1fr));gap:3px;max-width:520px;font:12.5px var(--mono)}
+.hm .h{color:var(--muted);text-align:center;padding:2px;overflow-wrap:anywhere}
+.hm .rl{background:none;border:1px solid transparent;color:var(--fg);text-align:right;padding:4px 6px;font:12.5px var(--mono);cursor:pointer;border-radius:6px}
+.hm .rl[aria-pressed="true"]{border-color:var(--p);background:var(--p-soft)}
+.hm .cell{text-align:center;padding:9px 2px;border-radius:5px;border:1px solid var(--line)}
+.hm .cell.sel{outline:2px solid var(--p)}
+.rows{display:flex;flex-direction:column;gap:6px;min-width:0}
+.rrow{display:grid;grid-template-columns:2.2em minmax(70px,1.1fr) minmax(60px,1.4fr) 3.6em;gap:8px;align-items:center;font-size:13px;padding:5px 7px;border-radius:7px;background:var(--surface);border:1px solid var(--line)}
+.rrow.dim{opacity:.55}
+.rrow .rid{font:500 12px var(--mono);color:var(--p-text)}
+.rrow .rbar{height:9px;background:var(--surface2);border-radius:5px;overflow:hidden}
+.rrow .rbar i{display:block;height:100%;background:var(--p)}
+.rrow .rv{font:12.5px var(--mono);text-align:right}
+.rrow .why{grid-column:2/-1;font-size:12px;color:var(--muted)}
+.tag{display:inline-block;font:500 11px/1 var(--mono);padding:3px 6px;border-radius:5px;margin-right:4px;background:var(--surface2);color:var(--muted)}
+.tag.ok{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.tag.no{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.two>*{min-width:0}
+.two h4{margin:0 0 8px;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+pre.code{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px 12px;font:12.5px/1.55 var(--mono);overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+pre.code .k{color:var(--p-text);font-weight:500}
+.scatwrap{max-width:520px}
+svg.scat{width:100%;height:auto;background:var(--surface);border:1px solid var(--line);border-radius:9px;display:block}
+svg text{fill:var(--fg);font-family:var(--mono)}
+.chart{width:100%;height:auto;background:var(--surface);border:1px solid var(--line);border-radius:9px;display:block}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.card{border:1.5px solid var(--line);background:var(--surface);border-radius:9px;padding:10px 12px;font-size:14px;min-width:0}
+.card.pick{border-color:var(--p);background:var(--p-soft)}
+.card .meta{font:12px var(--mono);color:var(--muted);margin-bottom:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.tbl th{font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tbl td.m{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
+.tbl tr.dim{opacity:.4}
+.scroll{overflow-x:auto}
+.stack{display:flex;height:26px;border-radius:7px;overflow:hidden;border:1px solid var(--line)}
+.stack i{display:block;height:100%}
+.final{background:var(--surface);border:2px solid var(--p);border-radius:11px;padding:14px 16px;font-size:16px}
+.final .cite{font:500 12px var(--mono);background:var(--p-soft);color:var(--p-text);padding:2px 6px;border-radius:5px;margin-left:3px}
+.stream{min-height:48px;padding:8px;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+.hnsw text{font-size:9px}
+.journey{--p:var(--fg);--p-soft:var(--surface2);--p-ink:var(--bg);--p-text:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px}
+.jbar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:10px}
+.jhint{font-size:13px;color:var(--muted)}
+.jscroll{overflow-x:auto}
+.jsvg{display:block;width:100%;min-width:760px;height:auto}
+.jsvg text{font-family:var(--mono)}
+.jband{fill:var(--p-soft);opacity:.55}
+.jlane{font-size:10px;font-weight:600;fill:var(--p-text)}
+.jln{stroke:var(--line);stroke-width:2.5;transition:stroke .4s}
+.jln.done{stroke:var(--p)}
+.jn{cursor:pointer}
+.jn circle{fill:var(--surface);stroke:var(--p);stroke-width:1.7;transition:fill .4s}
+.jn.vis circle{fill:var(--p-soft)}
+.jn.act circle{fill:var(--p)}
+.jn text{font-size:8.5px;text-anchor:middle;fill:var(--fg)}
+.jn .lbl{fill:var(--muted)}
+.jn.act .id{fill:var(--p-ink)}
+.jn.act .lbl{fill:var(--fg);font-weight:600}
+.jn:focus-visible circle{stroke-width:3.4}
+.jlink{fill:none;stroke:var(--fg);stroke-width:1.5;stroke-dasharray:5 5;opacity:.18;transition:opacity .4s}
+.jlink.on{opacity:.85;animation:jdash 1s linear infinite}
+.jlk{font-size:9px;fill:var(--muted)}
+@keyframes jdash{to{stroke-dashoffset:-20}}
+#pkt{transition:transform .95s cubic-bezier(.5,0,.2,1)}
+#pkt .core{fill:var(--p);stroke:var(--surface);stroke-width:2}
+#pkt .halo{fill:var(--p);opacity:.28;animation:jpulse 1.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes jpulse{50%{transform:scale(1.5);opacity:.1}}
+.jcap{border-left:6px solid var(--p);background:var(--p-soft);border-radius:0 9px 9px 0;padding:10px 14px;margin-top:8px;min-height:78px}
+.jcap .jt{font-family:var(--display);font-weight:700;font-size:17px;color:var(--p-text)}
+.jcap .jt b{font:700 13px var(--mono);background:var(--p);color:var(--p-ink);padding:3px 7px;border-radius:6px;margin-right:8px}
+.jcap .jd{margin-top:5px;font:13.5px/1.5 var(--mono);overflow-wrap:anywhere}
+.jcap.flash .jd{animation:jin .6s ease-out}
+@keyframes jin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+details.steplist{margin-bottom:16px}
+details.steplist>summary{cursor:pointer;font-size:13.5px;color:var(--muted);padding:4px 0}
+.foot{margin-top:26px;font-size:13px;color:var(--muted);max-width:90ch}
+.foot b{color:var(--fg)}
+@media (max-width:720px){
+  .lane{grid-template-columns:minmax(0,1fr)}
+  .stage{padding:14px}
+  .rrow{grid-template-columns:2em minmax(0,1fr) 3.6em}
+  .rrow .rbar{grid-column:2/-1;grid-row:2}
+  .nav{width:100%}
+  .nav .btn{flex:1}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Zero to answer · interactive map</p>
+    <h1>How a question becomes an answer from your own data</h1>
+    <p class="sub">Three paths, one live example. Click any stage to open it and play with the real parameters. The running example is a small set of e-Sevai invoices and the question <b>“How much did Murugan e-Sevai pay in March?”</b>. You can change the question in stage C1.</p>
+  </header>
+  <div class="legend" aria-label="Colour key">
+    <span data-path="A"><i></i>A · How the LLM was built (done once by the model maker)</span>
+    <span data-path="B"><i></i>B · How your data is prepared (offline)</span>
+    <span data-path="C"><i></i>C · What happens at question time (every request)</span>
+  </div>
+  <section class="journey" aria-label="Animated journey from A to C">
+    <div class="jbar">
+      <button class="btn solid" id="jplay" type="button">▶ Play the journey</button>
+      <button class="btn" id="jrestart" type="button">⟲ Restart</button>
+      <label class="ctl"><span class="ctl-l">Speed</span><select id="jspeed"><option value="5200">Slow</option><option value="3400" selected>Normal</option><option value="1900">Fast</option></select></label>
+      <span class="jhint">The dot is your data. Click any circle to jump there; the lab for that stage opens below.</span>
+    </div>
+    <div class="jscroll"><div id="jsvgbox"></div></div>
+    <div class="jcap" id="jcap" data-path="A"><div class="jt"></div><div class="jd"></div></div>
+  </section>
+  <details class="steplist"><summary>Text version of the steps</summary>
+  <nav class="map" id="map" aria-label="Pipeline stages"></nav>
+  <p class="wires"><b>How the paths connect:</b> A’s trained model is what runs in <b>C8–C9</b>. B’s vectors and index are what <b>C3–C5</b> search. C is the only path that runs when a user asks something.</p></details>
+  <article class="stage" id="stage" aria-live="polite"></article>
+  <p class="foot"><b>How this page simulates things.</b> Retrieval maths (cosine, BM25, hybrid weights, filters, KV-cache and FLOP sums) is computed live. The embedding is a toy 8-number vector with named dimensions so you can see what is happening, where real models use 384–3,072 unnamed numbers. The cross-encoder, attention weights, loss curve and the final answer are small rule-based stand-ins for real models.</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- helpers ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const money=n=>'₹'+Math.round(n).toLocaleString('en-IN');
+const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const bytes=n=>n>=1e12?(n/1e12).toFixed(2)+' TB':n>=1e9?(n/1e9).toFixed(1)+' GB':n>=1e6?(n/1e6).toFixed(1)+' MB':n>=1e3?(n/1e3).toFixed(1)+' KB':Math.round(n)+' B';
+const hash=s=>{let h=2166136261;for(const ch of String(s)){h^=ch.codePointAt(0);h=Math.imul(h,16777619);}return h>>>0;};
+const rng=seed=>()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+let CUR='A1';
+let TIMERS=[];
+const later=(fn,ms)=>{const t=setTimeout(fn,ms);TIMERS.push(t);return t;};
+const every=(fn,ms)=>{const t=setInterval(fn,ms);TIMERS.push(t);return t;};
+
+function slider(label,min,max,step,value,show,on){
+  const w=el('label','ctl'),id=`${CUR}-${slug(label)}`;
+  w.innerHTML=`<span class="ctl-l">${label}</span><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${value}"><output for="${id}"></output>`;
+  const i=$('input',w),o=$('output',w);
+  const u=()=>{o.textContent=show(+i.value)};
+  i.addEventListener('input',()=>{u();on(+i.value)});u();return w;
+}
+function check(label,value,on){
+  const w=el('label','ctl'),id=`${CUR}-${slug(label)}`;
+  w.innerHTML=`<input id="${id}" type="checkbox" ${value?'checked':''}><span>${label}</span>`;
+  $('input',w).addEventListener('change',e=>on(e.target.checked));return w;
+}
+function select(label,opts,value,on){
+  const w=el('label','ctl'),id=`${CUR}-${slug(label)}`;
+  w.innerHTML=`<span class="ctl-l">${label}</span><select id="${id}">${opts.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(value)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  $('select',w).addEventListener('change',e=>on(e.target.value));return w;
+}
+function btn(label,on,cls){const b=el('button','btn '+(cls||''),esc(label));b.type='button';b.addEventListener('click',on);return b;}
+const ctls=(...k)=>{const d=el('div','ctls');d.append(...k);return d;};
+
+/* ---------- example data: e-Sevai invoices ---------- */
+const DIMS=['Murugan','Lakshmi','March','April','income','bill','ticket','money'];
+const CH=[
+ {id:'c1',doc:'INV-101',type:'invoice',cust:'Murugan',mon:'Mar',svc:'income',total:1180,status:'Paid',src:'inv_101.pdf',text:'INV-101 | Murugan e-Sevai | 05 Mar 2026 | Income Certificate x20 @ ₹50 | Subtotal ₹1,000 | GST 18% ₹180 | Total ₹1,180 | Paid',vec:[1,0,1,0,1,0,0,.8],xy:[30,32]},
+ {id:'c2',doc:'INV-102',type:'invoice',cust:'Murugan',mon:'Mar',svc:'bill',total:708,status:'Paid',src:'inv_102.pdf',text:'INV-102 | Murugan e-Sevai | 18 Mar 2026 | Bill Payment x40 @ ₹15 | Subtotal ₹600 | GST 18% ₹108 | Total ₹708 | Paid',vec:[1,0,1,0,0,1,0,.8],xy:[37,41]},
+ {id:'c3',doc:'INV-103',type:'invoice',cust:'Lakshmi',mon:'Mar',svc:'ticket',total:708,status:'Paid',src:'inv_103.pdf',text:'INV-103 | Lakshmi e-Sevai | 09 Mar 2026 | Ticketing x30 @ ₹20 | Subtotal ₹600 | GST 18% ₹108 | Total ₹708 | Paid',vec:[0,1,1,0,0,0,1,.8],xy:[70,30]},
+ {id:'c4',doc:'INV-104',type:'invoice',cust:'Murugan',mon:'Apr',svc:'income',total:1475,status:'Pending',src:'inv_104.pdf',text:'INV-104 | Murugan e-Sevai | 02 Apr 2026 | Income Certificate x25 @ ₹50 | Subtotal ₹1,250 | GST 18% ₹225 | Total ₹1,475 | Pending',vec:[1,0,0,1,1,0,0,.8],xy:[27,70]},
+ {id:'c5',doc:'GST policy',type:'policy',cust:null,mon:null,svc:null,total:0,status:'',src:'gst_policy.pdf',text:'Policy | GST 18% applies on all consulting fees | Pay invoices within 15 days of the invoice date',vec:[0,0,0,0,0,0,0,1],xy:[82,78]},
+ {id:'c6',doc:'Chat 28 Mar',type:'chat',cust:'Murugan',mon:'Mar',svc:'bill',total:0,status:'',src:'whatsapp.txt',text:'WhatsApp 28 Mar | Murugan: Please send my March bill',vec:[.8,0,.8,0,0,.3,0,.2],xy:[19,21]}
+];
+const ISO={Mar:'2026-03',Apr:'2026-04'};
+const STOP=new Set('how much did in the a an of is what to for and was are'.split(' '));
+const tk=s=>s.toLowerCase().replace(/e-sevai/g,'esevai').split(/[^a-z0-9]+/).filter(x=>x&&!STOP.has(x));
+const DT=CH.map(c=>tk(c.text));
+const AVG=DT.reduce((s,d)=>s+d.length,0)/DT.length;
+const cos=(a,b)=>{let d=0,x=0,y=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];x+=a[i]*a[i];y+=b[i]*b[i];}return x&&y?d/Math.sqrt(x*y):0;};
+const norm=v=>{const mn=Math.min(...v),mx=Math.max(...v);return v.map(x=>mx>mn?(x-mn)/(mx-mn):0);};
+function bm25(q,k1,b){
+  const qt=[...new Set(tk(q))];
+  return DT.map(d=>{let s=0;for(const t of qt){const n=DT.filter(x=>x.includes(t)).length;if(!n)continue;
+    const idf=Math.log(1+(DT.length-n+.5)/(n+.5)),f=d.filter(x=>x===t).length;
+    s+=idf*f*(k1+1)/(f+k1*(1-b+b*d.length/AVG));}return s;});
+}
+const matched=(q,i)=>[...new Set(tk(q))].filter(t=>DT[i].includes(t));
+
+const S={q:'How much did Murugan e-Sevai pay in March?',useRewrite:true,topk:4,k1:1.5,b:.75,alpha:.6,fCust:true,fMon:true,fType:true,topn:3,thresh:.3};
+function analyse(q){
+  const t=q.toLowerCase();
+  const e={cust:/murugan/.test(t)?'Murugan':/lakshmi/.test(t)?'Lakshmi':null,
+    mon:/\bmar(ch)?\b/.test(t)?'Mar':/\bapr(il)?\b/.test(t)?'Apr':null,
+    svc:/income|certificate/.test(t)?'income':/bill/.test(t)?'bill':/ticket/.test(t)?'ticket':null,
+    money:/pay|paid|much|total|amount|cost|₹|rupee|owe|due/.test(t)};
+  e.vec=[e.cust==='Murugan'?1:0,e.cust==='Lakshmi'?1:0,e.mon==='Mar'?1:0,e.mon==='Apr'?1:0,e.svc==='income'?1:0,e.svc==='bill'?1:0,e.svc==='ticket'?1:0,e.money?.9:.2];
+  return e;
+}
+function rewrite(q,e){
+  const p=[],ex=[];
+  if(e.cust)p.push(e.cust+' e-Sevai');
+  if(e.money){p.push('total','paid','amount');ex.push('pay → total / paid / amount');}
+  if(e.mon){const m=e.mon==='Mar'?['Mar','March']:['Apr','April'];p.push(...m,'2026');ex.push(m.join(' ↔ ')+' (the documents say “'+e.mon+'”)');}
+  if(e.svc)p.push({income:'Income Certificate',bill:'Bill Payment',ticket:'Ticketing'}[e.svc]);
+  if(e.money||e.svc)p.push('invoice');
+  return {text:p.length?p.join(' '):q,ex};
+}
+const filtersFor=e=>[
+  {key:'fCust',label:'customer = '+(e.cust||'—'),applies:!!e.cust,fn:c=>c.cust===e.cust},
+  {key:'fMon',label:'month = '+(e.mon||'—'),applies:!!e.mon,fn:c=>c.mon===e.mon},
+  {key:'fType',label:'type = invoice',applies:!!(e.money||e.svc),fn:c=>c.type==='invoice'}
+].map(f=>({...f,on:S[f.key]}));
+const rerankScore=(c,e,d)=>clamp(.05+(e.cust&&c.cust===e.cust?.4:0)+(e.mon&&c.mon===e.mon?.2:0)+((e.money||e.svc)&&c.type==='invoice'?.35:0)+(e.svc&&c.svc===e.svc?.05:0)+.01*d,0,.99);
+function problems(c,e){
+  const r=[];
+  if(e.cust&&c.cust!==e.cust)r.push(c.cust?'wrong customer':'no customer');
+  if(e.mon&&c.mon!==e.mon)r.push(c.mon?'wrong month':'no month');
+  if((e.money||e.svc)&&c.type!=='invoice')r.push('not an invoice');
+  return r;
+}
+function run(){
+  const e=analyse(S.q),rw=rewrite(S.q,e),qt=S.useRewrite?rw.text:S.q;
+  const dense=CH.map(c=>cos(e.vec,c.vec)),kw=bm25(qt,S.k1,S.b);
+  const nd=norm(dense),nk=norm(kw);
+  const fl=filtersFor(e);
+  const rows=CH.map((c,i)=>({c,i,dense:dense[i],kw:kw[i],hy:S.alpha*nd[i]+(1-S.alpha)*nk[i],
+    failed:fl.filter(f=>f.on&&f.applies&&!f.fn(c)).map(f=>f.label)})).sort((a,b)=>b.hy-a.hy);
+  let n=0;rows.forEach(r=>{if(r.failed.length)r.status='filtered';else if(n<S.topk){r.status='kept';n++;}else r.status='cut';});
+  const cands=rows.filter(r=>r.status==='kept');
+  const rr=cands.map(r=>({...r,rr:rerankScore(r.c,e,r.dense)})).sort((a,b)=>b.rr-a.rr);
+  const selRows=rr.filter((r,i)=>i<S.topn&&r.rr>=S.thresh);
+  const P={e,rw,qt,dense,kw,fl,rows,cands,rr,selRows,sel:selRows.map(r=>r.c)};
+  P.ans=answerFor(P);return P;
+}
+function answerFor(P){
+  const inv=P.sel.filter(c=>c.type==='invoice');
+  if(!inv.length)return {text:'I could not find this in the provided documents.',cites:[],bad:[],sum:0,inv};
+  const sum=inv.reduce((s,c)=>s+c.total,0),e=P.e;
+  const allPaid=inv.every(c=>c.status==='Paid'),pend=inv.filter(c=>c.status!=='Paid');
+  const who=e.cust?e.cust+' e-Sevai':'The selected customers';
+  const mon=e.mon==='Mar'?' for March':e.mon==='Apr'?' for April':'';
+  const verb=allPaid?'paid':'was billed';
+  const parts=inv.map(c=>`${c.doc} ${money(c.total)}`).join(' + ');
+  let text=`${who} ${verb} ${money(sum)}${mon}: ${parts}.`;
+  if(pend.length)text+=` ${pend.map(c=>c.doc).join(', ')} is still pending.`;
+  const bad=inv.filter(c=>(e.cust&&c.cust!==e.cust)||(e.mon&&c.mon!==e.mon));
+  return {text,cites:inv.map(c=>c.doc),bad,sum,inv};
+}
+
+/* ---------- shared visuals ---------- */
+function scatter({hi=[],q=null,sel=null}){
+  let s=`<svg class="scat" viewBox="0 0 100 100" role="img" aria-label="Two-dimensional map of chunk embeddings">`;
+  for(let i=10;i<100;i+=20){s+=`<line x1="${i}" y1="0" x2="${i}" y2="100" stroke="var(--line)" stroke-width=".3"/><line x1="0" y1="${i}" x2="100" y2="${i}" stroke="var(--line)" stroke-width=".3"/>`;}
+  if(q)hi.forEach(id=>{const c=CH.find(x=>x.id===id);s+=`<line x1="${q[0]}" y1="${q[1]}" x2="${c.xy[0]}" y2="${c.xy[1]}" stroke="var(--p)" stroke-width=".6" stroke-dasharray="1.6 1.4"/>`;});
+  CH.forEach(c=>{
+    const [x,y]=c.xy,on=hi.includes(c.id)||sel===c.id,f=on?'var(--p)':'var(--surface2)';
+    const st=`fill="${f}" stroke="var(--p)" stroke-width="${sel===c.id?1.4:.7}"`;
+    let sh;
+    if(c.type==='invoice')sh=`<circle cx="${x}" cy="${y}" r="3.4" ${st}/>`;
+    else if(c.type==='chat')sh=`<rect x="${x-3}" y="${y-3}" width="6" height="6" rx="1.4" ${st}/>`;
+    else sh=`<polygon points="${x},${y-3.8} ${x+3.8},${y} ${x},${y+3.8} ${x-3.8},${y}" ${st}/>`;
+    s+=`<g data-id="${c.id}" style="cursor:pointer">${sh}<text x="${x}" y="${y+7.4}" font-size="3.3" text-anchor="middle">${c.id}</text></g>`;
+  });
+  if(q)s+=`<g><path d="M${q[0]-3},${q[1]} h6 M${q[0]},${q[1]-3} v6" stroke="var(--fg)" stroke-width="1.2"/><circle cx="${q[0]}" cy="${q[1]}" r="4.6" fill="none" stroke="var(--fg)" stroke-width=".6"/><text x="${q[0]+6}" y="${q[1]-4}" font-size="3.4" font-weight="600">query</text></g>`;
+  s+=`<g font-size="3"><circle cx="6" cy="94" r="1.8" fill="var(--surface2)" stroke="var(--p)" stroke-width=".5"/><text x="9.5" y="95">invoice</text><rect x="28" y="92.3" width="3.4" height="3.4" fill="var(--surface2)" stroke="var(--p)" stroke-width=".5"/><text x="33" y="95">chat</text><polygon points="48,92 50,94 48,96 46,94" fill="var(--surface2)" stroke="var(--p)" stroke-width=".5"/><text x="52" y="95">policy</text></g></svg>`;
+  return s;
+}
+function queryXY(e){
+  let sx=0,sy=0,sw=0;CH.forEach(c=>{const w=Math.pow(Math.max(0,cos(e.vec,c.vec)),6);sx+=w*c.xy[0];sy+=w*c.xy[1];sw+=w;});
+  return sw?[sx/sw,sy/sw]:[50,50];
+}
+function vecBars(vec,labels){
+  return `<div class="dimbars">${vec.map((v,i)=>`<div><span>${labels[i]}</span><span class="tr"><i style="width:${Math.round(v*100)}%"></i></span><span>${v.toFixed(2)}</span></div>`).join('')}</div>`;
+}
+function relTag(c,e){const p=problems(c,e);return p.length?`<span class="tag no">✗ ${p.join(', ')}</span>`:`<span class="tag ok">✓ relevant</span>`;}
+function rankRows(arr,max,f){
+  return `<div class="rows">${arr.map(r=>`<div class="rrow"><span class="rid">${r.c.id}</span><span>${esc(r.c.doc)}</span><div class="rbar"><i style="width:${max?clamp(r.v/max*100,0,100):0}%"></i></div><span class="rv">${f(r.v)}</span></div>`).join('')}</div>`;
+}
+
+/* sampler: logits → softmax(T) → top-k → top-p → pick */
+const CAND=[['1,888',6.0],['1,180',3.8],['708',3.2],['1,475',2.5],['2,000',1.0],['about',.2]];
+function sampler(root,full){
+  const st={T:.7,p:1,k:6};
+  const out=el('div'),res=el('p','note');
+  const ctl=ctls(slider('temperature',.05,2,.05,st.T,v=>v.toFixed(2),v=>{st.T=v;draw();}));
+  if(full){ctl.append(slider('top_p',.1,1,.05,st.p,v=>v.toFixed(2),v=>{st.p=v;draw();}),slider('top_k',1,6,1,st.k,v=>v,v=>{st.k=v;draw();}));}
+  ctl.append(btn('Sample 1 token',()=>pick(1),'solid sm'),btn('Sample 100 times',()=>pick(100),'sm'));
+  root.append(el('p','note','<b>Prompt ends with:</b> “… INV-101 ₹1,180 + INV-102 ₹708. Total = ₹” → which token comes next?'),ctl,out,res);
+  function calc(){
+    const T=st.T,ex=CAND.map(([,l])=>Math.exp(l/T)),Z=ex.reduce((a,b)=>a+b,0),p0=ex.map(x=>x/Z);
+    const order=p0.map((_,i)=>i).sort((a,b)=>p0[b]-p0[a]);const keep=new Set();let cum=0;
+    order.forEach((i,r)=>{if(r<st.k&&(cum<st.p||r===0))keep.add(i);cum+=p0[i];});
+    const ZK=[...keep].reduce((s,i)=>s+p0[i],0);
+    return {p0,pf:p0.map((p,i)=>keep.has(i)?p/ZK:0),keep};
+  }
+  function draw(){
+    const {p0,pf,keep}=calc();
+    out.innerHTML=`<div class="rows">${CAND.map(([t,l],i)=>`<div class="rrow ${keep.has(i)?'':'dim'}"><span class="rid">₹</span><span>${esc(t)}</span><div class="rbar" title="raw probability"><i style="width:${(pf[i]*100).toFixed(1)}%"></i></div><span class="rv">${(pf[i]*100).toFixed(1)}%</span><span class="why">logit ${l.toFixed(1)} · raw ${(p0[i]*100).toFixed(1)}%${keep.has(i)?'':' · cut by top_k / top_p'}</span></div>`).join('')}</div>`;
+  }
+  function pick(n){
+    const {pf}=calc(),cnt=CAND.map(()=>0);
+    for(let k=0;k<n;k++){let r=Math.random(),i=0;for(;i<pf.length-1;i++){r-=pf[i];if(r<=0)break;}cnt[i]++;}
+    res.innerHTML=n===1?`Picked: <b>₹${esc(CAND[cnt.findIndex(x=>x)][0])}</b>`:`Over 100 samples: `+CAND.map(([t],i)=>cnt[i]?`<b>${esc(t)}</b> ×${cnt[i]}`:'').filter(Boolean).join(' · ');
+  }
+  draw();
+}
+
+/* ---------- tokenizer ---------- */
+const COMMON=new Set('paid in march the of a invoice total bill payment income certificate how much did pay and for is to gst'.split(' '));
+function toks(text){
+  const out=[],re=/\s?[A-Za-z]+|\s?\d+|\s?[^\x00-\x7F]|\s?[^\sA-Za-z\d]/g;
+  for(const m of text.matchAll(re)){
+    const s=m[0],core=s.trim(),lead=s.slice(0,s.length-core.length);
+    if(/^[A-Za-z]+$/.test(core)){
+      if(COMMON.has(core.toLowerCase())||core.length<=4)out.push({t:s});
+      else{for(let i=0;i<core.length;i+=(i?3:4)){out.push({t:(i?'':lead)+core.slice(i,i+(i?3:4))});}}
+    }else if(/^\d+$/.test(core)){for(let i=0;i<core.length;i+=3)out.push({t:(i?'':lead)+core.slice(i,i+3)});}
+    else out.push({t:s,na:/[^\x00-\x7F]/.test(core)});
+  }
+  out.forEach(o=>{o.id=hash(o.t)%49000+1000;});return out;
+}
+const vis=t=>t.replace(/^ /,'▁');
+
+/* ---------- STAGE VISUALS ---------- */
+const V={};
+
+V.A1=root=>{
+  const D=[['Mumbai local train timetable, explained','ok'],['Mumbai local train timetable, explained (mirror-site copy)','dup'],['BUY CHEAP PILLS click here click here click here','spam'],['Python: reading Excel files with pandas','ok'],['Customer list: Ravi, 98xxxxxx12, ravi@mail.com','pii'],['GST rate changes explained (Tamil news article)','ok'],['lorem ipsum dolor sit amet … ×1000','spam'],['Intro to accounting, chapter 3','ok']];
+  const st={dup:true,q:true,pii:true},out=el('div');
+  root.append(ctls(check('Remove duplicates',st.dup,v=>{st.dup=v;draw();}),check('Drop low-quality pages',st.q,v=>{st.q=v;draw();}),check('Mask personal data',st.pii,v=>{st.pii=v;draw();})),out);
+  function draw(){
+    let kept=0;
+    const rows=D.map(([t,k])=>{let tag,keep=true;
+      if(k==='dup'&&st.dup){tag='<span class="tag no">removed · near-duplicate</span>';keep=false;}
+      else if(k==='spam'&&st.q){tag='<span class="tag no">removed · low quality</span>';keep=false;}
+      else if(k==='pii'){tag=st.pii?'<span class="tag ok">kept · personal data masked</span>':'<span class="tag no">kept · leaks personal data!</span>';}
+      else tag='<span class="tag ok">kept</span>';
+      if(keep)kept++;return `<div class="rrow ${keep?'':'dim'}" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(t)}</span><span>${tag}</span></div>`;}).join('');
+    out.innerHTML=`<div class="rows">${rows}</div><p class="note"><b>${kept} of ${D.length}</b> documents survive. At real scale that is trillions of tokens, and the filtering rules are a big part of what makes one model better than another.</p>`;
+  }
+  draw();
+};
+
+V.A2=root=>{
+  const inp=el('div','ctl');inp.innerHTML=`<label class="ctl" style="width:100%"><span class="ctl-l">Text</span><input id="A2-text" type="text" style="flex:1" value="Murugan e-Sevai paid ₹1,180 in March"></label>`;
+  const out=el('div');
+  const set=v=>{$('input',inp).value=v;draw();};
+  root.append(inp,ctls(btn('Invoice line',()=>set('INV-101 | Murugan e-Sevai | Total ₹1,180'),'sm'),btn('Question',()=>set('How much did Murugan e-Sevai pay in March?'),'sm'),btn('Tamil',()=>set('முருகன் இ-சேவை மார்ச் மாதம் எவ்வளவு செலுத்தியது?'),'sm')),out);
+  $('input',inp).addEventListener('input',draw);
+  function draw(){
+    const text=$('input',inp).value,T=toks(text),na=T.filter(t=>t.na).length;
+    out.innerHTML=`<div>${T.map(t=>`<span class="tok ${t.na?'na':''}">${esc(vis(t.t))}<small>${t.id}</small></span>`).join('')}</div>
+    <p class="note"><b>${text.length}</b> characters → <b>${T.length}</b> tokens (≈ ${(text.length/Math.max(T.length,1)).toFixed(1)} chars per token).${na?` ${na} non-English symbols appear as dashed chips: real tokenizers often split each into 2–3 byte tokens, so Tamil text costs several times more tokens than English for the same meaning.`:''} ▁ marks a leading space. IDs are illustrative.</p>`;
+  }
+  draw();
+};
+
+V.A3=root=>{
+  const T=toks('Murugan paid ₹1,180 in March'),st={i:0,d:4096},out=el('div'),chips=el('div');
+  root.append(ctls(select('d_model',[[768,'768 (small)'],[2048,'2,048'],[4096,'4,096 (7B-class)'],[8192,'8,192 (70B-class)']],st.d,v=>{st.d=+v;draw();})),chips,out);
+  function draw(){
+    chips.innerHTML=T.map((t,i)=>`<button type="button" class="tok" aria-pressed="${i===st.i}" data-i="${i}">${esc(vis(t.t))}<small>id ${t.id} · pos ${i}</small></button>`).join('');
+    const r=rng(T[st.i].id),v=Array.from({length:32},()=>r()*2-1);
+    out.innerHTML=`<p class="note"><b>Row ${T[st.i].id} of the embedding table</b> (first 32 of ${st.d.toLocaleString()} numbers):</p>
+    <div class="vec">${v.map(x=>`<div class="col"><i style="${x>=0?`bottom:50%;height:${x*50}%`:`top:50%;height:${-x*50}%`}"></i></div>`).join('')}</div>
+    <p class="note">Table size = vocab × d_model × 2 bytes = 128,000 × ${st.d.toLocaleString()} × 2 = <b>${bytes(128000*st.d*2)}</b>. Training moves these numbers until tokens used in similar ways end up with similar rows. Values here are random placeholders.</p>
+    <div class="callout"><b>Position:</b> attention alone ignores word order, so position is injected. With RoPE, query and key vectors are <i>rotated</i> by an angle that grows with position. For the fastest dimension pair, token ${st.i} is rotated by ${st.i}×1.00 rad; for the slowest pair only ${(st.i*1.16e-4).toFixed(5)} rad. Order becomes geometry.</div>`;
+  }
+  chips.addEventListener('click',e=>{const b=e.target.closest('[data-i]');if(b){st.i=+b.dataset.i;draw();}});
+  draw();
+};
+
+V.A4=root=>{
+  const T=['Murugan','paid','₹1,180','in','March'];
+  const H=[
+   {n:'Head 1 · who did what',m:[[2,.5,.3,0,0],[3,1.5,2.5,.2,.5],[.8,3,1.5,.3,.4],[.3,.8,2,1,1.8],[.6,.4,.5,2.8,1.2]]},
+   {n:'Head 2 · when',m:[[1.5,1,.2,.2,.3],[.5,1,.6,.5,3],[.3,.8,1,.6,2.6],[.2,.3,.4,.8,3.2],[.3,1.8,1.2,2.2,1.5]]},
+   {n:'Head 3 · previous word',m:[[3,0,0,0,0],[3,.5,0,0,0],[0,3,.5,0,0],[0,0,3,.5,0],[0,0,0,3,.5]]}];
+  const st={h:0,mask:true,row:4},out=el('div');
+  root.append(ctls(select('Attention head',H.map((h,i)=>[i,h.n]),0,v=>{st.h=+v;draw();}),check('Causal mask (decoder-only LLM)',st.mask,v=>{st.mask=v;draw();})),out);
+  const sm=(r,i)=>{const v=r.map((x,j)=>st.mask&&j>i?-Infinity:x),m=Math.max(...v),e=v.map(x=>Math.exp(x-m)),s=e.reduce((a,b)=>a+b,0);return e.map(x=>x/s);};
+  function draw(){
+    const W=H[st.h].m.map(sm);
+    let g=`<div class="hm"><span></span>${T.map(t=>`<span class="h">${t}</span>`).join('')}`;
+    W.forEach((r,i)=>{g+=`<button type="button" class="rl" data-r="${i}" aria-pressed="${i===st.row}">${T[i]} ▸</button>`;
+      r.forEach(w=>{g+=`<span class="cell ${i===st.row?'sel':''}" style="background:color-mix(in srgb,var(--p) ${(w*100).toFixed(0)}%,var(--surface));color:${w>.55?'var(--p-ink)':'var(--fg)'}">${w.toFixed(2)}</span>`;});});
+    g+='</div>';
+    const top=W[st.row].map((w,j)=>[w,j]).sort((a,b)=>b[0]-a[0]).slice(0,2);
+    out.innerHTML=g+`<p class="note">Rows = the token that is <i>asking</i>; columns = the tokens it can <i>read</i>; each row sums to 1.00. <b>“${T[st.row]}”</b> takes most from <b>“${T[top[0][1]]}”</b> (${top[0][0].toFixed(2)})${top[1][0]>.05?` and “${T[top[1][1]]}” (${top[1][0].toFixed(2)})`:''}. ${st.mask?'The causal mask hides later words, so a token can only look backwards; that is what lets the model generate left to right.':'Without the mask each token also sees the future; that is how encoder models like BERT work.'}</p>
+    <div class="callout"><b>The formula:</b> Attention = softmax(Q·Kᵀ / √d) · V. Q asks “what am I looking for?”, K says “what do I contain?”, V is the content that gets mixed. Real models run 32–128 heads like these in parallel, in 32–120 stacked layers. Weights shown here are hand-made for illustration.</div>`;
+  }
+  out.addEventListener('click',e=>{const b=e.target.closest('[data-r]');if(b){st.row=+b.dataset.r;draw();}});
+  draw();
+};
+
+V.A5=root=>sampler(root,false);
+
+V.A6=root=>{
+  const st={lg:-3.5,N:7e9,D:2e12},out=el('div');
+  root.append(ctls(slider('learning rate',-5,-2,.1,st.lg,v=>'1e'+v.toFixed(1).replace('-','−').replace(/^1e−/,'1e−'),v=>{st.lg=v;draw();}),select('Model size N',[[7e9,'7 billion'],[70e9,'70 billion'],[400e9,'400 billion']],st.N,v=>{st.N=+v;draw();}),select('Training tokens D',[[2e12,'2 trillion'],[15e12,'15 trillion']],st.D,v=>{st.D=+v;draw();})),out);
+  const loss=(t,lg)=>{const eff=Math.exp(-Math.pow(lg+3.5,2)/.9),rate=.004+.07*eff,floor=1.9+(1-eff)*1.6;
+    let L=floor+(10.8-floor)*Math.exp(-rate*t);if(lg>-2.7)L+=Math.max(0,t-25)*.06*(lg+2.7)*4;
+    L+=.06*Math.sin(t*2.3)*(1+Math.max(0,lg+3)*3);return clamp(L,1.5,11);};
+  function draw(){
+    const X=t=>44+t/100*504,Y=l=>12+(1-l/11)*200;let d='';
+    for(let t=0;t<=100;t++)d+=(t?'L':'M')+X(t).toFixed(1)+','+Y(loss(t,st.lg)).toFixed(1);
+    const end=loss(100,st.lg),lr=Math.pow(10,st.lg);
+    const verdict=st.lg<-4.3?'Too low: loss falls slowly and training budget is wasted.':st.lg>-2.7?'Too high: updates overshoot and loss becomes unstable or diverges.':'In the usual range (about 1e−4 to 3e−4 for large models).';
+    const fl=6*st.N*st.D,gh=fl/4e14/3600;
+    out.innerHTML=`<svg class="chart" viewBox="0 0 560 240" role="img" aria-label="Training loss curve">
+      <line x1="44" y1="12" x2="44" y2="212" stroke="var(--line)"/><line x1="44" y1="212" x2="548" y2="212" stroke="var(--line)"/>
+      <line x1="44" y1="${Y(10.8)}" x2="548" y2="${Y(10.8)}" stroke="var(--muted)" stroke-dasharray="4 4"/>
+      <text x="50" y="${Y(10.8)+12}" font-size="10" style="fill:var(--muted)">random guess ≈ ln(50,000) = 10.8</text>
+      <path d="${d}" fill="none" stroke="var(--p)" stroke-width="2.4"/>
+      <text x="6" y="16" font-size="10">loss</text><text x="300" y="232" font-size="10" text-anchor="middle">training steps (×1,000) →</text>
+      <text x="40" y="${Y(0)+4}" font-size="9" text-anchor="end">0</text><text x="40" y="${Y(5.5)+3}" font-size="9" text-anchor="end">5</text></svg>
+    <p class="note">Learning rate ${lr.toExponential(1)} → final loss <b>${end.toFixed(2)}</b>. ${verdict}</p>
+    <div class="callout"><b>Compute:</b> FLOPs ≈ 6 × N × D = 6 × ${(st.N/1e9).toFixed(0)}B × ${(st.D/1e12).toFixed(0)}T = <b>${fl.toExponential(1)}</b>. At about 400 TFLOP/s effective per GPU that is roughly <b>${Math.round(gh).toLocaleString()} GPU-hours</b>, so a thousand GPUs would need ≈ ${(gh/1000/24).toFixed(1)} days.</div>`;
+  }
+  draw();
+};
+
+V.A7=root=>{
+  const st={sft:false},out=el('div');
+  const b=btn('Show base model',()=>{st.sft=false;draw();},'sm'),s=btn('Show after SFT',()=>{st.sft=true;draw();},'sm');
+  root.append(ctls(b,s),out);
+  function draw(){
+    out.innerHTML=`<div class="two"><div><h4>Prompt</h4><pre class="code">How much GST on ₹1,000 at 18%?</pre></div>
+    <div><h4>${st.sft?'After supervised fine-tuning':'Base model (pretrained only)'}</h4><pre class="code">${st.sft?'GST at 18% on ₹1,000 is ₹180, so the total is ₹1,180.':'How much GST on ₹2,000 at 18%? How much GST on ₹5,000 at 18%? How much GST on ₹10,000 at 12%? How much'}</pre></div></div>
+    <p class="note">${st.sft?'Trained on thousands of (instruction, ideal answer) pairs. The loss is the same next-token loss, but it is counted only on the answer tokens.':'The base model only continues text. A question looks like the start of a list of questions, so it writes more questions.'}</p>`;
+    b.style.opacity=st.sft?.6:1;s.style.opacity=st.sft?1:.6;
+  }
+  draw();
+};
+
+V.A8=root=>{
+  const A=[['A','₹180. Total ₹1,180.',.92],['B','I think around 12%, but I am not sure.',.21],['C','GST is a tax. Here is a 2,000-word history of indirect taxation in India, starting in 1860…',.35]];
+  const st={pick:0},out=el('div');root.append(out);
+  function draw(){
+    const ch=A[st.pick];
+    out.innerHTML=`<p class="note"><b>Prompt:</b> “How much GST on ₹1,000 at 18%?” Click the answer a human reviewer would prefer.</p>
+    <div class="cards">${A.map((a,i)=>`<button type="button" class="card ${i===st.pick?'pick':''}" data-i="${i}" style="text-align:left;cursor:pointer;color:inherit;font-family:inherit"><div class="meta">Answer ${a[0]} · reward ${a[2].toFixed(2)}</div>${esc(a[1])}</button>`).join('')}</div>
+    <pre class="code" style="margin-top:12px">{ "prompt": "How much GST on ₹1,000 at 18%?",
+  "chosen":   "${esc(ch[1])}",
+  "rejected": "${esc(A.filter((_,i)=>i!==st.pick)[0][1])}" }</pre>
+    <p class="note">DPO nudges the model to raise P(chosen) and lower P(rejected), while a KL / β term stops it drifting too far from the SFT model. Thousands of such pairs shape helpfulness, honesty, tone and refusals.</p>`;
+  }
+  out.addEventListener('click',e=>{const c=e.target.closest('[data-i]');if(c){st.pick=+c.dataset.i;draw();}});
+  draw();
+};
+
+V.B1=root=>{
+  const SRC=[
+   {n:'Scanned PDF invoice',raw:'[image of a paper invoice, slightly tilted]',out:'INV-1O1 ¦ Murugan  e-Sevai ¦ O5 Mar 2O26 ¦ Income  Certificate x2O @ ₹5O ¦ Total ₹1,18O ¦ Paid',how:'OCR (Tesseract / PaddleOCR with Tamil + English)',gotcha:'OCR confuses the letter O with zero and doubles spaces. Stage B2 repairs this.'},
+   {n:'Excel sheet',raw:'Date | Center | Service | Qty | Rate\n05-Mar-26 | Murugan | Income Certificate | 20 | 50',out:'Date=05-Mar-26; Center=Murugan; Service=Income Certificate; Qty=20; Rate=50',how:'openpyxl / pandas, one row → one sentence',gotcha:'A bare row loses its column names. Keep headers attached to every row or the chunk is meaningless.'},
+   {n:'WhatsApp export',raw:'[28/03/26, 4:12 pm] Murugan: Please send my March bill',out:'WhatsApp 28 Mar | Murugan: Please send my March bill',how:'regex parser per message line',gotcha:'Multi-line messages and emoji need grouping; keep timestamp and sender as metadata.'},
+   {n:'Database row',raw:'{"id":104,"center":"Murugan","svc":"Income Certificate","total":1475,"status":"Pending"}',out:'Invoice 104: Murugan, Income Certificate, total ₹1,475, status Pending',how:'SQL query → template sentence',gotcha:'Numbers you will want to add up should also stay in SQL; text chunks are bad at arithmetic.'}];
+  const st={i:0},tabs=el('div'),out=el('div');root.append(tabs,out);
+  function draw(){
+    tabs.innerHTML='';const c=ctls(...SRC.map((s,i)=>{const b=btn(s.n,()=>{st.i=i;draw();},'sm'+(i===st.i?' solid':''));return b;}));tabs.append(c);
+    const s=SRC[st.i];
+    out.innerHTML=`<div class="two"><div><h4>What the file looks like</h4><pre class="code">${esc(s.raw)}</pre></div><div><h4>What the parser extracts</h4><pre class="code">${esc(s.out)}</pre></div></div><p class="note"><b>Tool:</b> ${esc(s.how)}</p><div class="callout"><b>Watch out:</b> ${esc(s.gotcha)}</div>`;
+  }
+  draw();
+};
+
+V.B2=root=>{
+  const RAW='Tax Invoice — CONFIDENTIAL\nINV-1O1 ¦ Murugan  e-Sevai ¦ O5 Mar 2O26 ¦ Income  Certificate x2O @ ₹5O ¦ Total ₹1,18O ¦ Paid\nPage 1 of 1';
+  const st={o:true,sp:true,bar:true,hf:true},out=el('div');
+  root.append(ctls(check('Fix letter O → digit 0',st.o,v=>{st.o=v;draw();}),check('Collapse extra spaces',st.sp,v=>{st.sp=v;draw();}),check('Replace ¦ with |',st.bar,v=>{st.bar=v;draw();}),check('Strip header / footer',st.hf,v=>{st.hf=v;draw();})),out);
+  function draw(){
+    let t=RAW;
+    if(st.hf)t=t.split('\n').filter(l=>!/^(Tax Invoice|Page \d)/.test(l)).join('\n');
+    if(st.o)t=t.replace(/(?<=\d)O|O(?=\d)/g,'0');
+    if(st.sp)t=t.replace(/ {2,}/g,' ');
+    if(st.bar)t=t.replace(/¦/g,'|');
+    out.innerHTML=`<div class="two"><div><h4>Raw OCR output</h4><pre class="code">${esc(RAW)}</pre></div><div><h4>After cleaning</h4><pre class="code">${esc(t)}</pre></div></div>
+    <p class="note">Why it matters: a search for “1,180” can never match “1,18O”, and “INV-101” will not match “INV-1O1”. Every rule you change means re-embedding the affected chunks, so keep cleaning code under version control.</p>`;
+  }
+  draw();
+};
+
+V.B3=root=>{
+  const TXT='Monthly statement — Murugan e-Sevai — March 2026. INV-101 on 05 Mar: Income Certificate x20 at ₹50, total ₹1,180, paid. INV-102 on 18 Mar: Bill Payment x40 at ₹15, total ₹708, paid. Outstanding balance ₹0. GST at 18% is included in all totals. Please pay future invoices within 15 days of the invoice date to avoid a late fee.';
+  const W=TXT.split(' '),st={size:22,ov:20,mode:'fixed'},out=el('div');
+  root.append(ctls(select('Strategy',[['fixed','Fixed size (words)'],['struct','Structure-aware (1 invoice = 1 chunk)']],st.mode,v=>{st.mode=v;draw();}),slider('chunk size',8,60,1,st.size,v=>v+' words',v=>{st.size=v;draw();}),slider('overlap',0,50,5,st.ov,v=>v+'%',v=>{st.ov=v;draw();})),out);
+  function draw(){
+    let ch=[];
+    if(st.mode==='struct'){ch=TXT.split(/(?=INV-\d+ )|(?<=paid\. )(?=Outstanding)/).map(s=>({w:s.trim().split(' '),ov:0}));}
+    else{const step=Math.max(1,Math.round(st.size*(1-st.ov/100)));for(let i=0;i<W.length;i+=step){ch.push({w:W.slice(i,i+st.size),start:i});if(i+st.size>=W.length)break;}
+      ch.forEach((c,k)=>{c.ov=k?Math.max(0,ch[k-1].start+ch[k-1].w.length-c.start):0;});}
+    out.innerHTML=`<div class="rows">${ch.map((c,k)=>`<div class="rrow" style="grid-template-columns:2.4em minmax(0,1fr)"><span class="rid">#${k+1}</span><span>${c.w.map((w,j)=>j<c.ov?`<mark style="background:color-mix(in srgb,var(--p) 30%,transparent);color:inherit">${esc(w)}</mark>`:esc(w)).join(' ')}<span class="why" style="display:block;font-size:12px;color:var(--muted)">${c.w.length} words${c.ov?` · first ${c.ov} words repeat the previous chunk`:''}</span></span></div>`).join('')}</div>
+    <p class="note"><b>${ch.length} chunks.</b> ${st.mode==='struct'?'Splitting on natural boundaries keeps each invoice whole, so retrieval returns a complete record.':'Fixed windows can cut an invoice in half (try a small size) so the amount lands in a different chunk from the customer name. Overlap repeats the boundary words so less is lost.'}</p>`;
+  }
+  draw();
+};
+
+V.B4=root=>{
+  const st={cust:'any',mon:'any'},out=el('div');
+  root.append(ctls(select('customer',[['any','any'],['Murugan','Murugan'],['Lakshmi','Lakshmi']],st.cust,v=>{st.cust=v;draw();}),select('month',[['any','any'],['Mar','2026-03'],['Apr','2026-04']],st.mon,v=>{st.mon=v;draw();})),out);
+  function draw(){
+    const ok=c=>(st.cust==='any'||c.cust===st.cust)&&(st.mon==='any'||c.mon===st.mon);
+    const n=CH.filter(ok).length;
+    out.innerHTML=`<div class="scroll"><table class="tbl"><thead><tr><th>id</th><th>text (start)</th><th>metadata</th></tr></thead><tbody>${CH.map(c=>`<tr class="${ok(c)?'':'dim'}"><td class="m">${c.id}</td><td>${esc(c.text.slice(0,52))}…</td><td class="m">{source:"${c.src}", type:"${c.type}", customer:${c.cust?`"${c.cust}"`:'null'}, month:${c.mon?`"${ISO[c.mon]}"`:'null'}}</td></tr>`).join('')}</tbody></table></div>
+    <p class="note"><b>${n} of ${CH.length}</b> chunks remain. A metadata filter removes the rest <i>exactly</i>, before any similarity search. With 10 million chunks this is the difference between searching everything and searching one customer’s month. It is also how you enforce “this user may only see their own customers”.</p>`;
+  }
+  draw();
+};
+
+V.B5=root=>{
+  const st={sel:'c1',dim:768,N:1e6},out=el('div');
+  const mk=el('div','two');const left=el('div','scatwrap'),right=el('div');mk.append(left,right);
+  root.append(ctls(select('Embedding model',[[384,'bge-small · 384 dims'],[768,'e5-base / bge-base · 768'],[1536,'text-embedding-3-small · 1,536'],[3072,'text-embedding-3-large · 3,072']],st.dim,v=>{st.dim=+v;draw();}),select('Chunks stored',[[1e4,'10 thousand'],[1e6,'1 million'],[1e8,'100 million']],st.N,v=>{st.N=+v;draw();})),mk);
+  function draw(){
+    const c=CH.find(x=>x.id===st.sel);
+    left.innerHTML=scatter({sel:st.sel});
+    right.innerHTML=`<p class="note" style="margin-top:0"><b>${c.id} · ${esc(c.doc)}</b><br>${esc(c.text)}</p>${vecBars(c.vec,DIMS)}
+    <p class="note">Toy 8-number embedding with named dimensions. Real models use ${st.dim.toLocaleString()} unnamed numbers, but the idea is the same: similar meaning → similar numbers → nearby points. The map is a 2-D squash of that space; click a point.</p>
+    <div class="callout"><b>Size:</b> ${st.dim.toLocaleString()} dims × 4 bytes = ${bytes(st.dim*4)} per chunk. ${st.N.toLocaleString()} chunks → <b>${bytes(st.N*st.dim*4)}</b> of raw vectors, before the index.</div>`;
+  }
+  left.addEventListener('click',e=>{const g=e.target.closest('[data-id]');if(g){st.sel=g.dataset.id;draw();}});
+  draw();
+};
+
+V.B6=root=>{
+  const st={tab:'hnsw'},tabs=el('div'),out=el('div');root.append(tabs,out);
+  const POS={c6:[70,200],c1:[140,200],c2:[215,200],c4:[300,200],c3:[400,200],c5:[500,200]};
+  const L1={c1:[140,120],c4:[300,120],c5:[500,120]},L2={c4:[300,44]};
+  const E0=[['c6','c1'],['c1','c2'],['c2','c4'],['c4','c3'],['c3','c5'],['c2','c3']],E1=[['c1','c4'],['c4','c5']];
+  const PATH=[[2,'c4'],[1,'c4'],[1,'c1'],[0,'c1'],[0,'c6'],[0,'c2']];
+  function hnsw(){
+    const mp=[POS,L1,L2];let hl=new Set();
+    const svgBase=()=>{let s=`<svg class="chart hnsw" viewBox="0 0 560 240" role="img" aria-label="HNSW graph search across three layers">`;
+      [['layer 2 (sparse)',44],['layer 1',120],['layer 0 (all vectors)',200]].forEach(([n,y])=>{s+=`<text x="6" y="${y-14}" font-size="9" style="fill:var(--muted)">${n}</text><line x1="0" y1="${y+16}" x2="560" y2="${y+16}" stroke="var(--line)" stroke-dasharray="2 4"/>`;});
+      E0.forEach(([a,b])=>{s+=`<line x1="${POS[a][0]}" y1="${POS[a][1]}" x2="${POS[b][0]}" y2="${POS[b][1]}" stroke="var(--muted)" opacity=".5"/>`;});
+      E1.forEach(([a,b])=>{s+=`<line x1="${L1[a][0]}" y1="${L1[a][1]}" x2="${L1[b][0]}" y2="${L1[b][1]}" stroke="var(--muted)" opacity=".5"/>`;});
+      [[0,POS],[1,L1],[2,L2]].forEach(([l,m])=>Object.keys(m).forEach(id=>{const on=hl.has(l+id);s+=`<circle cx="${m[id][0]}" cy="${m[id][1]}" r="11" fill="${on?'var(--p)':'var(--surface)'}" stroke="var(--p)" stroke-width="1.6"/><text x="${m[id][0]}" y="${m[id][1]+3}" font-size="9" text-anchor="middle" style="fill:${on?'var(--p-ink)':'var(--fg)'}">${id}</text>`;}));
+      return s+'</svg>';};
+    out.innerHTML=`<div id="hn">${svgBase()}</div><div class="ctls" id="hbtn"></div><p class="note" id="hnote">Press “Run search”: start at the top layer, hop to whichever neighbour is closer to the query, drop a layer, repeat.</p>`;
+    const draw=()=>{$('#hn',out).innerHTML=svgBase();};
+    $('#hbtn',out).append(btn('Run search',()=>{hl=new Set();draw();TIMERS.forEach(clearTimeout);TIMERS=[];
+      PATH.forEach(([l,id],k)=>later(()=>{hl.add(l+id);draw();$('#hnote',out).innerHTML=`Step ${k+1}/${PATH.length}: visit <b>${id}</b> on layer ${l}.${k===PATH.length-1?' <b>Done:</b> best neighbours found after checking 6 nodes. With 10 million vectors, HNSW checks a few hundred instead of all 10 million.':''}`;},k*650));},'solid sm'));
+    out.append(el('div','callout','<b>Parameters:</b> <code>M</code> = links per node (more = better recall, more RAM). <code>ef_construction</code> = effort when building. <code>ef_search</code> = candidates kept while searching (higher = slower, more accurate). This is <i>approximate</i> nearest-neighbour search.'));
+  }
+  function inv(){
+    const e=analyse(S.q),qt=new Set(tk(rewrite(S.q,e).text)),idx={};
+    CH.forEach((c,i)=>{const seen={};DT[i].forEach(t=>seen[t]=(seen[t]||0)+1);Object.keys(seen).forEach(t=>{(idx[t]=idx[t]||[]).push(c.id+'×'+seen[t]);});});
+    const terms=['murugan','esevai','mar','march','paid','total','apr','lakshmi','income','bill','invoice'].filter(t=>idx[t]);
+    out.innerHTML=`<div class="scroll"><table class="tbl"><thead><tr><th>term</th><th>chunks containing it (×count)</th></tr></thead><tbody>${terms.map(t=>`<tr class="${qt.has(t)?'':'dim'}"><td class="m">${t}${qt.has(t)?' ★':''}</td><td class="m">${idx[t].join(', ')}</td></tr>`).join('')}</tbody></table></div>
+    <p class="note">★ = terms in your (rewritten) question. Notice “mar” and “march” point to <b>different</b> chunks: a keyword index cannot know they mean the same month. That gap is exactly why you also keep the vector index.</p>
+    <div class="callout"><b>Parameters:</b> BM25 <code>k1</code> (term-frequency saturation, 1.2–2.0) and <code>b</code> (length normalisation, 0.75). You can tune both live in stage C4.</div>`;
+  }
+  function draw(){tabs.innerHTML='';tabs.append(ctls(btn('Vector index (HNSW)',()=>{st.tab='hnsw';draw();},'sm'+(st.tab==='hnsw'?' solid':'')),btn('Keyword index (inverted / BM25)',()=>{st.tab='inv';draw();},'sm'+(st.tab==='inv'?' solid':''))));
+    if(st.tab==='hnsw')hnsw();else inv();}
+  draw();
+};
+
+V.B7=root=>{
+  const e=analyse(S.q),mon=ISO[e.mon]||'2026-03',cust=e.cust||'Murugan';
+  root.append(el('div','scroll',`<table class="tbl"><thead><tr><th>id</th><th>embedding vector(768)</th><th>body</th><th>customer</th><th>month</th><th>type</th></tr></thead><tbody>${CH.map(c=>{const r=rng(hash(c.id));const v=[0,0,0,0].map(()=>(r()*.4-.2).toFixed(3));return `<tr><td class="m">${c.id}</td><td class="m">[${v.join(', ')}, …]</td><td>${esc(c.text.slice(0,40))}…</td><td class="m">${c.cust||'null'}</td><td class="m">${c.mon?ISO[c.mon]:'null'}</td><td class="m">${c.type}</td></tr>`;}).join('')}</tbody></table>`));
+  root.append(el('div','two',`<div style="margin-top:12px"><h4>Create the store (pgvector)</h4><pre class="code"><span class="k">CREATE TABLE</span> chunks (
+  id text, embedding vector(768), body text,
+  customer text, month text, type text);
+<span class="k">CREATE INDEX ON</span> chunks <span class="k">USING</span> hnsw
+  (embedding vector_cosine_ops)
+  <span class="k">WITH</span> (m = 16, ef_construction = 64);</pre></div>
+  <div style="margin-top:12px"><h4>Query it (filter + nearest neighbours)</h4><pre class="code"><span class="k">SELECT</span> id, body <span class="k">FROM</span> chunks
+<span class="k">WHERE</span> customer = '${cust}' <span class="k">AND</span> month = '${mon}'
+  <span class="k">AND</span> type = 'invoice'
+<span class="k">ORDER BY</span> embedding &lt;=&gt; $1  <span style="color:var(--muted)">-- cosine distance</span>
+<span class="k">LIMIT</span> ${S.topk};</pre></div>`));
+  root.append(el('div','callout',`<b>Exact numbers belong in SQL.</b> Adding up invoices is not a similarity problem. <code>SELECT SUM(total) FROM invoices WHERE customer='Murugan' AND month='2026-03'</code> returns <b>₹1,888</b> every time. Production systems let the LLM call both: vector search for “what does the policy say?”, SQL for “how much?”.`));
+};
+
+V.C1=root=>{
+  const out=el('div'),ta=el('label','ctl');ta.style.display='block';
+  ta.innerHTML=`<span class="ctl-l">Question</span><textarea id="C1-question">${esc(S.q)}</textarea>`;
+  const P=['How much did Murugan e-Sevai pay in March?','Lakshmi ticketing invoices in March','Is Murugan’s April income certificate invoice paid?','What is the capital of France?'];
+  root.append(ta,ctls(...P.map(p=>btn(p,()=>{S.q=p;$('textarea',ta).value=p;draw();},'sm'))),out);
+  $('textarea',ta).addEventListener('input',e=>{S.q=e.target.value;draw();});
+  function draw(){
+    const e=analyse(S.q),chip=(l,v)=>`<span class="tok">${l}: <b style="margin-left:4px">${v||'—'}</b></span>`;
+    out.innerHTML=`<pre class="code">{ "user": "owner_17", "lang": "en", "permissions": ["Murugan", "Lakshmi"],
+  "history": [], "query": "${esc(S.q)}" }</pre>
+    <p class="note"><b>What the system can already read from the question</b> (simple rules here, an LLM in real systems):</p>
+    <div>${chip('customer',e.cust)}${chip('month',e.mon)}${chip('service',e.svc)}${chip('asks for money',e.money?'yes':'no')}</div>
+    <p class="note">Try the last example: with nothing to match, the later stages should refuse instead of inventing an answer.</p>`;
+  }
+  draw();
+};
+
+V.C2=root=>{
+  const out=el('div');
+  root.append(ctls(check('Use rewritten query for keyword search',S.useRewrite,v=>{S.useRewrite=v;draw();})),out);
+  function draw(){
+    const P=run();
+    out.innerHTML=`<div class="two"><div><h4>Original</h4><pre class="code">${esc(S.q)}</pre></div><div><h4>Rewritten for search</h4><pre class="code">${esc(P.rw.text)}</pre></div></div>
+    <p class="note"><b>Expansions:</b> ${P.rw.ex.length?P.rw.ex.map(x=>`<span class="tag">${esc(x)}</span>`).join(' '):'none needed'}</p>
+    <p class="note"><b>Filters extracted:</b> ${P.fl.filter(f=>f.applies).map(f=>`<span class="tag ok">${esc(f.label)}</span>`).join(' ')||'<span class="tag">none</span>'}</p>
+    <div class="callout">Why bother: the invoices say “<b>Mar</b>”, the user typed “<b>March</b>”. A keyword index treats those as different words. Rewriting (or HyDE, where the LLM drafts a fake answer and embeds <i>that</i>) closes the vocabulary gap. This is usually a small, fast model call.</div>`;
+  }
+  draw();
+};
+
+V.C3=root=>{
+  const P=run(),q=queryXY(P.e),near=P.dense.map((d,i)=>[d,CH[i].id]).sort((a,b)=>b[0]-a[0]).slice(0,3).map(x=>x[1]);
+  const mk=el('div','two'),l=el('div','scatwrap'),r=el('div');mk.append(l,r);
+  l.innerHTML=scatter({q,hi:near});
+  r.innerHTML=`<p class="note" style="margin-top:0"><b>Query embedding</b> (toy 8-dim, same “model” as stage B5):</p>${vecBars(P.e.vec,DIMS)}
+  <p class="note">The question lands near chunks about the same customer, month and “money”. Dashed lines show its three nearest neighbours.</p>
+  <div class="callout"><b>Must match:</b> the query has to use the <i>same</i> model, the same prefix (e.g. “query: ”), and the same dimension as the stored vectors. A different model gives numbers from a different space, and every score becomes noise.</div>`;
+  root.append(mk);
+};
+
+V.C4=root=>{
+  const out=el('div');
+  root.append(ctls(slider('top_k',1,6,1,S.topk,v=>v,v=>{S.topk=v;draw();}),slider('BM25 k1',.5,2,.1,S.k1,v=>v.toFixed(1),v=>{S.k1=v;draw();}),slider('BM25 b',0,1,.05,S.b,v=>v.toFixed(2),v=>{S.b=v;draw();}),check('Use rewritten query',S.useRewrite,v=>{S.useRewrite=v;draw();})),out);
+  function draw(){
+    const P=run(),all=CH.map((c,i)=>({c,i}));
+    const dn=all.map(x=>({c:x.c,v:P.dense[x.i]})).sort((a,b)=>b.v-a.v).slice(0,S.topk);
+    const kw=all.map(x=>({c:x.c,v:P.kw[x.i]})).sort((a,b)=>b.v-a.v).slice(0,S.topk);
+    const lst=(arr,max,f,ki)=>arr.map(r=>`<div class="rrow" style="grid-template-columns:2.2em minmax(70px,1fr) minmax(50px,1fr) 3.6em"><span class="rid">${r.c.id}</span><span>${esc(r.c.doc)}</span><div class="rbar"><i style="width:${max?clamp(r.v/max*100,0,100):0}%"></i></div><span class="rv">${f(r.v)}</span><span class="why">${relTag(r.c,P.e)}${ki?`matched: ${matched(P.qt,CH.indexOf(r.c)).join(', ')||'nothing'}`:''}</span></div>`).join('');
+    out.innerHTML=`<div class="two"><div><h4>Dense · cosine similarity (meaning)</h4><div class="rows">${lst(dn,1,v=>v.toFixed(3),false)}</div></div>
+    <div><h4>Sparse · BM25 (exact words)</h4><div class="rows">${lst(kw,Math.max(...P.kw,.001),v=>v.toFixed(2),true)}</div></div></div>
+    <p class="note">Keyword query used: <b>${esc(P.qt)}</b></p>
+    <div class="callout">Neither list is perfect. Dense search likes the WhatsApp chat because it also talks about Murugan, March and bills. BM25 depends on which words match. ✗ badges show the retriever returning chunks that cannot answer the question. Next stage fixes that with filters and reranking.</div>`;
+  }
+  draw();
+};
+
+V.C5=root=>{
+  const out=el('div'),P0=run();
+  const ctl=ctls(slider('alpha (dense weight)',0,1,.05,S.alpha,v=>v.toFixed(2),v=>{S.alpha=v;draw();}),slider('top_k pool',1,6,1,S.topk,v=>v,v=>{S.topk=v;draw();}));
+  const fbox=el('div','ctls');
+  root.append(ctl,fbox,out);
+  P0.fl.forEach(f=>{const c=check(`filter: ${esc(f.label)}${f.applies?'':' (n/a)'}`,S[f.key],v=>{S[f.key]=v;draw();});if(!f.applies)$('input',c).disabled=true;fbox.append(c);});
+  function draw(){
+    const P=run(),mx=Math.max(...P.rows.map(r=>r.hy),.001);
+    out.innerHTML=`<div class="rows">${P.rows.map(r=>`<div class="rrow ${r.status==='kept'?'':'dim'}" style="grid-template-columns:2.2em minmax(70px,1fr) minmax(50px,1fr) 3.6em"><span class="rid">${r.c.id}</span><span>${esc(r.c.doc)}</span><div class="rbar"><i style="width:${r.hy/mx*100}%"></i></div><span class="rv">${r.hy.toFixed(2)}</span><span class="why">${r.status==='kept'?'<span class="tag ok">★ candidate</span>':r.status==='filtered'?`<span class="tag no">filtered out: ${esc(r.failed.join(', '))}</span>`:'<span class="tag">below top_k</span>'}${relTag(r.c,P.e)}</span></div>`).join('')}</div>
+    <p class="note">hybrid = α × dense(normalised) + (1 − α) × BM25(normalised). Real systems often use Reciprocal Rank Fusion instead, which needs no score scaling. <b>${P.cands.length}</b> candidates move on to the reranker.</p>
+    <div class="callout">Switch the filters off to see what happens when you rely on similarity alone: the wrong customer, the wrong month and a chat message all compete with the real invoices. Permission filters are not optional in production. They are the security boundary.</div>`;
+  }
+  draw();
+};
+
+V.C6=root=>{
+  const out=el('div');
+  root.append(ctls(slider('top_n kept',1,6,1,S.topn,v=>v,v=>{S.topn=v;draw();}),slider('score threshold',0,.9,.05,S.thresh,v=>v.toFixed(2),v=>{S.thresh=v;draw();})),out);
+  function draw(){
+    const P=run(),sel=new Set(P.selRows.map(r=>r.c.id));
+    out.innerHTML=`<div class="rows">${P.rr.map((r,k)=>`<div class="rrow ${sel.has(r.c.id)?'':'dim'}" style="grid-template-columns:2.2em minmax(70px,1fr) minmax(50px,1fr) 3.6em"><span class="rid">${r.c.id}</span><span>${esc(r.c.doc)}</span><div class="rbar"><i style="width:${r.rr*100}%"></i></div><span class="rv">${r.rr.toFixed(2)}</span><span class="why">${sel.has(r.c.id)?'<span class="tag ok">★ sent to the LLM</span>':'<span class="tag">dropped</span>'} was #${P.cands.findIndex(x=>x.c.id===r.c.id)+1} by hybrid → now #${k+1}</span></div>`).join('')||'<p class="note">No candidates.</p>'}</div>
+    <p class="note"><b>${P.selRows.length}</b> chunk(s) pass.${P.selRows.length?'':' Nothing is relevant enough, so the system will say “I don’t know” instead of guessing.'}</p>
+    <div class="callout">A bi-encoder (stage B5) embeds the question and the chunk <i>separately</i>, which is fast but coarse. A cross-encoder reads them <i>together</i> and judges relevance far better, but costs one model pass per pair, so it only runs on the shortlist. Scores here come from a rule that stands in for a trained reranker such as bge-reranker.</div>`;
+  }
+  draw();
+};
+
+V.C7=root=>{
+  const st={win:8192},out=el('div');
+  root.append(ctls(select('Context window',[[4096,'4k'],[8192,'8k'],[32768,'32k'],[200000,'200k']],st.win,v=>{st.win=+v;draw();}),slider('top_n kept',1,6,1,S.topn,v=>v,v=>{S.topn=v;draw();})),out);
+  function draw(){
+    const P=run(),sys='Answer only from the context. Cite chunk ids. If the answer is not in the context, say so.';
+    const ctx=P.sel.map(c=>`[${c.doc}] ${c.text}`).join('\n')||'(no chunk passed the threshold)';
+    const n=Math.ceil((sys.length+ctx.length+S.q.length)/4)+12,reserve=1024,pct=(n+reserve)/st.win*100;
+    out.innerHTML=`<pre class="code"><span class="k">SYSTEM</span>
+${esc(sys)}
+
+<span class="k">CONTEXT</span>
+${esc(ctx)}
+
+<span class="k">QUESTION</span>
+${esc(S.q)}</pre>
+    <p class="note"><b>≈ ${n} prompt tokens</b> + ${reserve} reserved for the answer = ${(n+reserve).toLocaleString()} of ${st.win.toLocaleString()} (${pct.toFixed(1)}%).</p>
+    <div class="stack"><i style="width:${Math.min(pct,100)}%;background:var(--p)"></i><i style="flex:1;background:var(--surface2)"></i></div>
+    <div class="callout">Every token is billed and adds latency. Put the strongest chunk first or last (models under-use the middle of long contexts). Text inside retrieved documents is <i>data</i>, never instructions: a chunk saying “ignore previous rules” is a prompt-injection attempt. A fixed system prompt can be prefix-cached to save time and cost.</div>`;
+  }
+  draw();
+};
+
+V.C8=root=>{
+  const M={'7B':{n:7e9,L:32,kv:8,d:128},'70B':{n:70e9,L:80,kv:8,d:128}},st={m:'7B',tok:1200,u:8,wp:2,kp:2},out=el('div');
+  root.append(ctls(select('Model',[['7B','7B (32 layers)'],['70B','70B (80 layers)']],st.m,v=>{st.m=v;draw();}),select('Weights precision',[[2,'16-bit'],[1,'8-bit'],[.5,'4-bit']],st.wp,v=>{st.wp=+v;draw();}),select('KV precision',[[2,'16-bit'],[1,'8-bit']],st.kp,v=>{st.kp=+v;draw();})),
+    ctls(slider('prompt tokens',200,32000,200,st.tok,v=>v.toLocaleString(),v=>{st.tok=v;draw();}),slider('concurrent users',1,64,1,st.u,v=>v,v=>{st.u=v;draw();})),out);
+  function draw(){
+    const m=M[st.m],w=m.n*st.wp,perTok=2*m.L*m.kv*m.d*st.kp,kvUser=perTok*st.tok,kvAll=kvUser*st.u,tot=w+kvAll,gpus=Math.ceil(tot/(80e9*.9));
+    out.innerHTML=`<div class="two"><div><h4>Memory</h4>
+    <div class="stack"><i style="width:${w/tot*100}%;background:var(--p)"></i><i style="width:${kvAll/tot*100}%;background:var(--c)"></i></div>
+    <p class="note"><b>Weights:</b> ${bytes(w)} (${(m.n/1e9)}B × ${st.wp} bytes)<br><b>KV cache per token:</b> 2 × ${m.L} layers × ${m.kv} KV heads × ${m.d} × ${st.kp} B = ${bytes(perTok)}<br><b>KV cache per user:</b> ${bytes(kvUser)} · for ${st.u} users: ${bytes(kvAll)}<br><b>Total:</b> ${bytes(tot)} → needs about <b>${gpus} × 80 GB GPU${gpus>1?'s':''}</b></p></div>
+    <div><h4>Time (rough, one request)</h4><p class="note"><b>Prefill</b> ≈ 2 × params × tokens / 400 TFLOP/s = <b>${(2*m.n*st.tok/4e14*1000).toFixed(0)} ms</b>. This is the wait before the first word appears, and it grows with prompt length. Prefill is compute-bound, so all prompt tokens run in parallel.</p>
+    <p class="note">The KV cache stores each token’s keys and values so decoding never recomputes them. That is why long prompts and many users fill GPU memory.</p></div></div>
+    <div class="callout">Levers: 4-bit weights and 8-bit KV cache shrink memory; GQA (few KV heads, as here) shrinks the cache by 4–8×; prefix caching reuses the system prompt; PagedAttention (vLLM) packs caches without waste.</div>`;
+  }
+  draw();
+};
+
+V.C9=root=>{
+  sampler(root,true);
+  const P=run(),box=el('div','stream'),info=el('p','note');
+  const row=ctls(btn('Stream the full answer',()=>{
+    TIMERS.forEach(clearInterval);box.innerHTML='';info.textContent='';
+    const parts=P.ans.text.match(/\s?[\w₹,.\-]+|\s?[^\w\s]/g)||[P.ans.text];let i=0,t0=performance.now();
+    every(function(){if(i>=parts.length){info.innerHTML=`Done: <b>${parts.length}</b> tokens. First token needed the prefill; every token after that costs one pass through the model.`;return;}
+      const s=el('span','tok',esc(parts[i].replace(/^ /,'▁')));box.append(s);i++;info.textContent=`${i}/${parts.length} tokens`;},90);
+  },'solid sm'));
+  root.append(el('p','note','<b>Full answer, token by token</b> (simulated):'),row,box,info,el('div','callout','<b>Decode is memory-bound:</b> each new token reads all the weights once. 7B at 16-bit is 14 GB; an H100 reads about 3.35 TB/s, so the ceiling is ≈ 240 tokens/s for one user. That is why batching, quantization and speculative decoding matter. For facts and numbers use a low temperature (0–0.3); the higher settings suit brainstorming, not invoices.'));
+};
+
+V.C10=root=>{
+  const P=run(),a=P.ans,sel=P.selRows;
+  const nums=(a.text.match(/₹[\d,]+/g)||[]),ctx=P.sel.map(c=>c.text).join(' ');
+  const checks=nums.map(n=>({n,ok:ctx.includes(n)}));
+  const ms=[['Embed query',20],['Search',40],['Rerank',Math.round(15*P.cands.length)],['Prefill',Math.round(40+S.q.length*.2+P.sel.length*60)],['Decode',Math.round(8*(a.text.length/4))]];
+  const tot=ms.reduce((s,x)=>s+x[1],0),cols=['var(--b)','var(--b)','var(--c)','var(--a)','var(--a)'];
+  root.append(el('div','final',`${esc(a.text)} ${a.cites.map(c=>`<span class="cite">${esc(c)}</span>`).join('')}`));
+  if(a.bad.length)root.append(el('div','callout',`<b>⚠ Wrong evidence reached the answer.</b> ${a.bad.map(c=>c.doc).join(', ')} does not match the question’s customer or month, but it was sent to the model, so the total is wrong. Go back to C5 and turn the filters on.`));
+  root.append(el('div','two',`<div style="margin-top:12px"><h4>Grounding check</h4><div class="rows">${checks.map(c=>`<div class="rrow" style="grid-template-columns:minmax(0,1fr) auto"><span>${esc(c.n)} appears in a source chunk</span>${c.ok?'<span class="tag ok">✓</span>':'<span class="tag no">✗ not found</span>'}</div>`).join('')||'<p class="note">No figures to verify.</p>'}</div>
+  <p class="note"><b>Sources:</b> ${sel.map(r=>esc(r.c.doc)+' ('+esc(r.c.src)+')').join(', ')||'none'}</p></div>
+  <div style="margin-top:12px"><h4>Latency budget (illustrative)</h4><div class="stack">${ms.map((x,i)=>`<i title="${x[0]}" style="width:${x[1]/tot*100}%;background:${cols[i]}"></i>`).join('')}</div>
+  <p class="note">${ms.map(x=>`${x[0]} ${x[1]} ms`).join(' · ')} → <b>≈ ${tot} ms</b> end-to-end. Colours: <b>B</b> index work, <b>C</b> reranking, <b>A</b> model work.</p></div>`));
+  root.append(el('div','callout',`<b>Make it better over time:</b> log the question, retrieved chunks and answer; measure Recall@k (was the right chunk found?) and faithfulness (is every claim in the sources?); collect thumbs up/down. For totals, the model should call SQL (SUM = ${money(CH.filter(c=>c.type==='invoice'&&(!P.e.cust||c.cust===P.e.cust)&&(!P.e.mon||c.mon===P.e.mon)).reduce((s,c)=>s+c.total,0))} for this question) and use the chunks to explain, not to add.`));
+};
+
+/* ---------- stage definitions ---------- */
+const STAGES=[
+ {id:'A1',short:'Raw data',title:'Raw text and filtering',sum:'Billions of web pages, books and code files are cleaned before any learning starts.',shape:'web crawl → clean text documents',
+  what:'Pretraining data is crawled text. Before training it is deduplicated, low-quality pages are dropped and personal data is scrubbed. The quality of this step often matters more than model size.',
+  params:[['dataset size','1–15+ trillion tokens','more data, better model, until quality becomes the limit'],['dedupe method','exact hash / MinHash','near-duplicates make the model memorise instead of generalise'],['quality threshold','classifier score','strict = cleaner but smaller'],['language and domain mix','web / code / books / math','sets what the model is good at, including Tamil quality']],
+  sys:['Petabytes of storage and distributed ETL (e.g. Spark)','Licence, copyright and privacy compliance','Removing benchmark questions so tests stay honest']},
+ {id:'A2',short:'Tokenize',title:'Tokenizer',sum:'Text is cut into sub-word pieces and every piece becomes an integer ID.',shape:'"Murugan e-Sevai" → [Mur, ugan, ▁e, -, Sev, ai] → [14233, 9812, …]',
+  what:'The model never sees letters; it sees token IDs. A byte-pair-encoding tokenizer learns the most common fragments from the training data, so common words are one token and rare words are split.',
+  params:[['vocab size','32k–200k','bigger = fewer tokens per text but a larger embedding table'],['algorithm','BPE / SentencePiece','how pieces are learned'],['special tokens','<bos>, <eos>, chat markers','mark start, end and roles'],['byte fallback','on','lets any character be encoded, at a cost in tokens']],
+  sys:['The same tokenizer must be used in training, embedding and inference','Tokens drive cost, latency and the context limit','Non-English text often needs 2–4× more tokens']},
+ {id:'A3',short:'Embed tokens',title:'Token embeddings and position',sum:'Each token ID looks up a learned vector, and position information is added.',shape:'id 5412 → [0.21, −0.88, 0.03, … 4096 numbers]',
+  what:'An embedding table is a big matrix with one row per token. Training adjusts the rows so tokens used in similar ways get similar vectors. Position is then injected, because attention by itself has no sense of order.',
+  params:[['d_model','768 – 8,192+','width of every vector in the model'],['embedding table','vocab × d_model','up to several GB'],['position scheme','RoPE / ALiBi','decides how well long contexts work'],['tied embeddings','yes / no','share input and output tables to save memory']],
+  sys:['Table is sharded across GPUs','Context length is set largely by the position scheme','Resizing the vocabulary means retraining']},
+ {id:'A4',short:'Attention',title:'Self-attention and transformer layers',sum:'Every token looks at the others and decides which ones matter.',shape:'[5 tokens × 4096] → softmax(QKᵀ/√d)·V → [5 × 4096]',
+  what:'Each layer has attention (mixing information between tokens) and a feed-forward network (processing each token). Dozens of heads in each layer look for different relationships; stacking dozens of layers builds up meaning.',
+  params:[['layers','32–120','depth = capacity and cost'],['attention heads','32–128','different relationships in parallel'],['KV heads (GQA)','8','fewer KV heads = smaller cache'],['context length','8k–1M','attention cost grows with n²']],
+  sys:['FlashAttention avoids storing the n × n matrix','Long context means more memory','Tensor/pipeline parallelism splits layers across GPUs']},
+ {id:'A5',short:'Next token',title:'Next-token probabilities',sum:'After all layers, the model scores every token in the vocabulary as the next word.',shape:'hidden [4096] → logits [≈100k] → softmax → probabilities',
+  what:'The last vector is projected onto the vocabulary, giving one score (logit) per token. Softmax turns those scores into probabilities. Temperature divides the logits first: low makes the top choice dominate, high flattens the field.',
+  params:[['temperature','0–2','0.0–0.3 for facts, 0.7–1.0 for creative text'],['vocab size','≈100k','one score per token, every step'],['logits','raw scores','before softmax']],
+  sys:['The output projection is as large as the embedding table','Softmax over 100k entries runs for every generated token','Log-probabilities can be exposed for confidence checks']},
+ {id:'A6',short:'Pretrain',title:'Pretraining',sum:'Predict the next token billions of times; the error nudges every weight.',shape:'tokens → predict next → cross-entropy loss → backprop → update weights',
+  what:'The model reads trillions of tokens, guesses each next token, measures how wrong it was (loss) and updates weights by gradient descent. Loss starts near ln(vocab) (pure guessing) and falls as the model learns language, facts and reasoning patterns.',
+  params:[['learning rate','1e−4 – 3e−4 peak','too high diverges, too low wastes compute'],['batch size','millions of tokens','smoother gradients'],['N (parameters)','7B–1T+','capacity'],['D (training tokens)','2T–15T+','data seen'],['optimizer','AdamW + warmup + cosine decay','standard recipe']],
+  sys:['Thousands of GPUs with data, tensor and pipeline parallelism','Checkpointing, because hardware fails during multi-week runs','Mixed precision (bf16) to save memory and time']},
+ {id:'A7',short:'SFT',title:'Supervised fine-tuning (SFT)',sum:'A pretrained model only continues text. SFT teaches it to follow instructions.',shape:'(instruction, ideal answer) pairs → next-token loss on the answer only',
+  what:'Humans write or curate thousands of example conversations. Training on them teaches the format and manners of an assistant on top of the knowledge already in the weights.',
+  params:[['examples','10k–1M','quality beats quantity'],['learning rate','≈1e−5','much smaller than pretraining'],['LoRA rank','8–64','trains small adapters instead of all weights'],['epochs','1–3','more risks memorising']],
+  sys:['Hours on a few GPUs rather than months on thousands','LoRA keeps the base model frozen and swappable','You can fine-tune on your own style, but facts belong in retrieval']},
+ {id:'A8',short:'Align',title:'Alignment (RLHF / DPO)',sum:'People rank answers; the model is nudged toward the preferred ones.',shape:'(prompt, chosen, rejected) → preference loss → updated model',
+  what:'For each prompt the model produces several answers and a reviewer picks the better one. A reward model (RLHF) or a direct loss (DPO) pushes the model toward chosen answers. This is where helpfulness, honesty, safety and tone are shaped.',
+  params:[['β / KL penalty','0.01–0.5','how far the model may drift from SFT'],['preference pairs','10k–1M','coverage of behaviours'],['reward model','separate network','scores answers'],['safety policy','rules and examples','what to refuse and how']],
+  sys:['Needs a reference model in memory next to the trainable one','Red-team testing before release','Behaviour changes need re-evaluation on benchmarks']},
+ {id:'B1',short:'Load & parse',title:'Load and parse your files',sum:'Your files come in many shapes. Each needs its own reader.',shape:'PDF / Excel / WhatsApp / DB → plain text + structure',
+  what:'Ingestion turns every source into clean text while keeping structure (table headers, timestamps, sender). Scanned documents need OCR; spreadsheets need their headers attached to each row.',
+  params:[['parser','pdfplumber, unstructured, Docling','layout-aware parsing keeps tables intact'],['OCR engine and language','Tesseract / PaddleOCR + Tamil','accuracy on scans'],['table handling','row → sentence','keeps columns with values'],['encoding','UTF-8','needed for ₹ and Tamil text']],
+  sys:['OCR is slow and runs in a batch queue','Incremental ingestion: only new or changed files (use file hashes)','Carry access rights from the source system']},
+ {id:'B2',short:'Clean',title:'Clean and normalise',sum:'Repair OCR errors and remove junk so every chunk is searchable.',shape:'"INV-1O1 ¦ Murugan  e-Sevai" → "INV-101 | Murugan e-Sevai"',
+  what:'Cleaning fixes scan errors, collapses whitespace, removes repeated headers and footers, masks personal data and drops duplicates. Small mistakes here quietly destroy retrieval later.',
+  params:[['normalisation rules','Unicode NFC, spaces, digits','consistent text = consistent matches'],['dedupe threshold','exact or near-duplicate','avoids repeated chunks'],['language detection','per document','route Tamil and English to the right model'],['PII masking','regex + NER','privacy']],
+  sys:['Cleaning code is versioned; changing a rule means re-embedding','Log what was dropped','Keep the raw files for audit']},
+ {id:'B3',short:'Chunk',title:'Chunking',sum:'Documents are split into pieces small enough to retrieve precisely.',shape:'document → chunk 1, chunk 2, … (≈ 300 tokens, 10–20% overlap)',
+  what:'The retriever returns whole chunks, so chunk boundaries decide what the LLM sees. Too big and each chunk is a blur of topics; too small and a number is separated from its label. For records like invoices, one record per chunk is best.',
+  params:[['chunk_size','200–800 tokens','precision vs context'],['overlap','10–20%','protects boundary sentences'],['strategy','fixed / sentence / structure / semantic','respect natural units'],['min chunk size','≈50 tokens','avoid fragments']],
+  sys:['Chunking affects quality more than the choice of LLM','Re-chunking forces re-embedding','Store a parent-document link to fetch more context when needed']},
+ {id:'B4',short:'Metadata',title:'Attach metadata',sum:'Each chunk carries labels so you can filter before you search.',shape:'{ text, source: "inv_101.pdf", customer: "Murugan", month: "2026-03", type: "invoice" }',
+  what:'Metadata is the exact, structured side of retrieval. Filtering by customer, month or type is precise and fast, and it also enforces who may see what.',
+  params:[['fields','source, page, date, customer, type, language, ACL','what you can filter by'],['id scheme','stable hash of source + position','updates without duplicates'],['timestamps / version','created, updated','freshness and deletes'],['access tags','user or team ids','row-level security']],
+  sys:['Index the fields you filter on','Deleting a source must delete its chunks','Permission tags must be set at ingestion']},
+ {id:'B5',short:'Embed',title:'Embed each chunk',sum:'An embedding model turns text into a vector; similar meaning lands close together.',shape:'"Murugan e-Sevai … Total ₹1,180" → [0.021, −0.113, … 768 numbers]',
+  what:'A separate, smaller transformer (an encoder) reads each chunk and outputs one fixed-length vector. Texts with similar meaning give vectors pointing in similar directions, so “nearby” means “related”.',
+  params:[['model','bge, e5, OpenAI text-embedding-3, multilingual-e5','language coverage (Tamil needs a multilingual model)'],['dimension','384–3,072','bigger = more accurate, more memory'],['max input','512–8,192 tokens','chunks above this are truncated'],['normalisation','unit length','makes cosine = dot product'],['prefix','"passage: " / "query: "','some models need it']],
+  sys:['GPU batch embedding for throughput','Changing the model means re-embedding everything','Cost per million tokens for hosted models']},
+ {id:'B6',short:'Index',title:'Build the search index',sum:'An index makes search fast: a graph for vectors, an inverted list for words.',shape:'vectors → HNSW layers · words → inverted index {march: [c6], mar: [c1, c2, c3]}',
+  what:'Comparing a query against every vector is too slow at scale. HNSW builds a layered graph so a search hops towards the answer in a few steps. A BM25 inverted index maps each word to the chunks that contain it.',
+  params:[['HNSW M','16–64','links per node'],['ef_construction','100–400','build quality'],['ef_search','50–200','recall vs latency at query time'],['IVF nlist / nprobe','1k–64k / 8–64','alternative: cluster then search clusters'],['BM25 k1, b','1.2–2.0, 0.75','keyword scoring'],['metric','cosine / dot / L2','must match the embedding model']],
+  sys:['HNSW lives in RAM and is slow to rebuild','Approximate search trades a little recall for big speed','Shard when data outgrows one machine']},
+ {id:'B7',short:'Store',title:'Store in a vector database',sum:'Vectors, text and metadata are saved together.',shape:'row { id, vector[768], body, metadata } → pgvector / Qdrant / Chroma',
+  what:'A vector database keeps each chunk’s vector next to its text and metadata, with the index on top. The same system answers “nearest vectors where customer = X and month = Y”.',
+  params:[['database','pgvector (SQL-first), Qdrant/Milvus (scale), Chroma (prototype)','operations vs scale'],['schema','vector + text + metadata','what you can filter'],['distance metric','fixed at index creation','changing needs a rebuild'],['quantization','int8 / binary','4–32× smaller, slight recall loss'],['replicas / shards','n','availability and throughput']],
+  sys:['Backups and restore tests','RAM vs disk and cost','Keep exact figures in SQL tables, not only in chunks']},
+ {id:'C1',short:'Question',title:'User question arrives',sum:'The question comes with context about who is asking.',shape:'{ user, lang, permissions, history, query }',
+  what:'The request carries the text plus identity, language, conversation history and what the user is allowed to see. Those permissions travel with the query down to the retrieval layer.',
+  params:[['input language','en / ta','pick the right embedding model'],['history window','last 3–10 turns','needed for follow-ups'],['permissions','user → allowed customers','becomes a mandatory filter'],['rate limit / max length','per user','protects cost and latency']],
+  sys:['Authentication and authorisation come first','Screen for prompt-injection and abuse','Log with privacy in mind']},
+ {id:'C2',short:'Rewrite',title:'Query rewriting',sum:'The question is cleaned and expanded so search can match how the documents are written.',shape:'"How much did Murugan e-Sevai pay in March?" → "Murugan e-Sevai total paid Mar March 2026 invoice"',
+  what:'A small LLM call (or rules) fixes typos, resolves “that customer” from the history, expands abbreviations and pulls out filters like customer and month.',
+  params:[['rewrite prompt / model','small, fast model','quality vs latency'],['multi-query','1–5 variants','higher recall'],['HyDE','on / off','embed a drafted answer instead of the question'],['temperature','0','deterministic rewrites']],
+  sys:['Adds roughly 200–500 ms','Cache repeated questions','Fall back to the original query if the call fails']},
+ {id:'C3',short:'Embed query',title:'Embed the question',sum:'The question becomes a vector with the same model used for the documents.',shape:'query → [0.04, −0.21, … 768 numbers]',
+  what:'The same embedding model converts the question to a vector. Its position relative to the chunk vectors is what the search will measure.',
+  params:[['model','identical to B5','otherwise the spaces do not match'],['prefix','"query: "','some models need it'],['max tokens','512','long questions get cut'],['dimension','= index dimension','must match']],
+  sys:['10–30 ms on GPU','Cache frequent queries','Version the model name alongside the index']},
+ {id:'C4',short:'Retrieve',title:'Retrieve: dense and keyword search',sum:'Two searches run: nearest vectors (meaning) and BM25 (exact words).',shape:'query vector → top_k nearest chunks · query words → BM25 hits',
+  what:'Dense search finds chunks that mean the same thing; BM25 finds chunks that contain the same words. Each is strong where the other is weak, so most production systems run both.',
+  params:[['top_k','10–50 in production','recall vs noise'],['ef_search','50–200','HNSW accuracy'],['metric','cosine','must match the index'],['BM25 k1 / b','1.2–2.0 / 0.75','term saturation and length normalisation'],['score threshold','0–1','drop weak hits']],
+  sys:['Vector search 5–50 ms','Fan out across shards and merge','Separate pools for keyword and vector workloads']},
+ {id:'C5',short:'Merge + filter',title:'Hybrid merge and metadata filters',sum:'Combine both result lists, then remove anything the user should not or cannot see.',shape:'score = α·dense + (1−α)·bm25 → filter(metadata) → candidates',
+  what:'Scores from both searches are normalised and mixed. Metadata filters then remove chunks of the wrong customer, month or type. Pre-filtering (inside the search) avoids empty results; post-filtering is simpler but can return too few.',
+  params:[['alpha','0.3–0.7','more weight to meaning or to words'],['fusion','weighted or RRF (k≈60)','how lists are merged'],['filters','customer, month, type, ACL','precision and security'],['candidate pool','20–100 in production','input to the reranker']],
+  sys:['Permission filters are the security boundary','Pre-filtering needs filtered-HNSW support','Monitor how often filters return nothing']},
+ {id:'C6',short:'Rerank',title:'Rerank the shortlist',sum:'A slower, smarter cross-encoder re-scores each candidate with the question.',shape:'(query, chunk) pairs → relevance 0–1 → keep top_n',
+  what:'The reranker reads the question and a chunk together, so it can notice that “Lakshmi” is not “Murugan” or that a chat message is not an invoice. Only the best few go to the LLM.',
+  params:[['reranker','bge-reranker, Cohere Rerank','accuracy vs cost'],['top_n','3–8','how much context the LLM gets'],['threshold','0.2–0.5','below it, answer “not found”'],['candidates in','20–100','more = better recall, slower']],
+  sys:['One model pass per pair (50–300 ms for 50 pairs)','Batch the pairs on GPU','Skip it only when latency is critical']},
+ {id:'C7',short:'Prompt',title:'Build the prompt',sum:'Chunks, instructions and the question are packed into one prompt within the token budget.',shape:'[system] + [context: chunks] + [history] + [question] → ≈ N tokens',
+  what:'The LLM only knows what is in this prompt (plus its trained weights). The template tells it to answer from the context, cite sources and admit when something is missing.',
+  params:[['context window','8k–1M','hard limit on prompt + answer'],['max_tokens','256–2,048','reserved for the answer'],['chunk order','best first or last','models under-use the middle'],['template / citation format','[INV-101]','traceability'],['history truncation','last N turns','budget']],
+  sys:['Tokens = cost and latency','Defend against instructions hidden in documents','Prefix caching for the static system prompt']},
+ {id:'C8',short:'Prefill',title:'Prefill and KV cache',sum:'The LLM reads the whole prompt in parallel and stores keys and values for reuse.',shape:'prompt tokens [N] → hidden states → KV cache [layers × N × kv_heads × d_head]',
+  what:'This is the first phase of inference. All prompt tokens go through the transformer at once (the same maths as stage A4), and each layer’s keys and values are saved so the next phase never recomputes them.',
+  params:[['model size','7B–400B','quality vs memory'],['weights precision','16 / 8 / 4-bit','memory and speed'],['KV heads × head dim','8 × 128','cache size per token'],['KV precision','16 / 8-bit','cache memory'],['prompt length','N tokens','time to first token'],['batch size / users','1–64+','throughput vs latency']],
+  sys:['Prefill is compute-bound; the KV cache is memory-bound','vLLM PagedAttention and continuous batching','Tensor parallelism when the model exceeds one GPU']},
+ {id:'C9',short:'Decode',title:'Decode and sampling',sum:'The answer is produced one token at a time; sampling settings pick each token.',shape:'loop: last token → attention over KV cache → logits → sample → append',
+  what:'Each step runs the model once for the newest token, turns the logits into probabilities (stage A5), applies temperature / top-p / top-k and picks a token. The loop stops at an end-of-sequence token, a stop string or max_tokens.',
+  params:[['temperature','0–0.3 for facts','randomness'],['top_p','0.9–1.0','keep the smallest set holding p of the probability'],['top_k','20–100','keep only the k best tokens'],['max_tokens','256–2,048','length cap'],['stop sequences','e.g. "\\n\\nQUESTION"','end cleanly'],['repetition penalty','1.0–1.2','reduces loops']],
+  sys:['Decode is memory-bandwidth-bound','Speculative decoding and batching raise throughput','Streaming tokens makes the wait feel shorter']},
+ {id:'C10',short:'Answer',title:'Post-process and deliver',sum:'Check the answer against the sources, add citations and stream it to the user.',shape:'raw text → grounding check → citations → UI',
+  what:'Before the user sees the answer the system can verify that figures appear in the retrieved sources, attach citations, apply safety filters and format the output. Everything is logged so you can measure and improve.',
+  params:[['citation format','[INV-101] or footnotes','trust'],['faithfulness check','rule or LLM judge','catch invented numbers'],['output schema','JSON or text','app integration'],['guardrails','PII, safety, tone','compliance'],['feedback','thumbs up/down','training signal for tuning']],
+  sys:['Log query, chunks, answer and latency','Track Recall@k, MRR and faithfulness (e.g. ragas)','Cost per request and per tenant']}
+];
+
+/* ---------- shell ---------- */
+const LANES=[['A','A · Model build','Done once by the model maker'],['B','B · Your data prep','Offline, repeated on updates'],['C','C · Question time','Runs on every request']];
+const map=$('#map'),stage=$('#stage');
+LANES.forEach(([p,n,d])=>{
+  const lane=el('div','lane');lane.dataset.path=p;
+  lane.innerHTML=`<div class="lane-name">${n}<small>${d}</small></div>`;
+  const steps=el('div','steps');
+  STAGES.filter(s=>s.p===p||s.id[0]===p).forEach((s,i)=>{
+    s.p=p;if(i)steps.append(el('span','arrow','›'));
+    const b=el('button','step',`<b>${s.id}</b> ${esc(s.short)}`);b.type='button';b.dataset.id=s.id;b.dataset.path=p;
+    b.addEventListener('click',()=>go(s.id,true));steps.append(b);
+  });
+  lane.append(steps);map.append(lane);
+});
+/* ---------- animated journey ---------- */
+const JL={A:[],B:[],C:[]};STAGES.forEach(s=>JL[s.id[0]].push(s));
+const JY={A:44,B:150,C:256},JPOS={},JNAME={A:'A · Model build (once)',B:'B · Your data prep (offline)',C:'C · Question time (every request)'};
+Object.keys(JL).forEach(p=>JL[p].forEach((s,i)=>{JPOS[s.id]=[70+i*(860/(JL[p].length-1)),JY[p]];}));
+function flowText(s){
+  const F={A1:'web pages, books, code → cleaned text documents',A2:'“Murugan paid ₹1,180” → [Mur][ugan][ paid][ ₹][1][,][180] → token IDs',A3:'token IDs → vectors of 4,096 numbers each, plus position',A4:'tokens exchange information: “paid” looks back at “Murugan”',A5:'a score for every possible next word → “1,888” is the most likely after “Total = ₹”',A6:'loss falls from 10.8 (random guessing) to about 2 over trillions of tokens',A7:'base model rambles → learns to answer the question asked',A8:'ranked answers → a helpful, honest model. It is now ready for C8–C9.',
+    B1:'inv_101.pdf (scan) → “INV-1O1 ¦ Murugan  e-Sevai ¦ O5 Mar 2O26 …”',B2:'“INV-1O1 ¦ O5 Mar” → “INV-101 | 05 Mar 2026 | Total ₹1,180 | Paid”',B3:'monthly statement → one chunk per invoice',B4:'chunk + { customer: Murugan, month: 2026-03, type: invoice }',B5:'chunk → [0.021, −0.113, 0.042, …] (768 numbers)',B6:'vectors → HNSW graph · words → inverted index',B7:'rows saved in the vector database. Now ready for C3–C5.'};
+  if(F[s.id])return F[s.id];
+  const P=run();
+  switch(s.id){
+    case 'C1':return '“'+S.q+'”';
+    case 'C2':return '→ “'+P.rw.text+'”';
+    case 'C3':return 'question → ['+P.e.vec.map(v=>v.toFixed(1)).join(', ')+'] (toy 8-dim vector)';
+    case 'C4':return 'dense + BM25 → '+S.topk+' nearest chunks from each search';
+    case 'C5':return 'merge + filters → candidates: '+(P.cands.map(r=>r.c.doc).join(', ')||'none');
+    case 'C6':return 'cross-encoder re-scores → kept: '+(P.selRows.map(r=>r.c.doc).join(', ')||'nothing relevant');
+    case 'C7':return 'prompt = rules + '+P.sel.length+' chunk(s) + the question';
+    case 'C8':return 'LLM reads the whole prompt at once and fills the KV cache';
+    case 'C9':return 'token by token: “'+P.ans.text.split(' ').slice(0,4).join('” “')+'” …';
+    default:return '“'+P.ans.text+'” '+P.ans.cites.map(c=>'['+c+']').join('');
+  }
+}
+let jn={},jlines=[],JT=null;
+(function buildJourney(){
+  let s='<svg viewBox="0 0 1000 310" class="jsvg" role="img" aria-label="Three lanes A, B and C with a moving dot showing data travelling through the stages">';
+  Object.keys(JL).forEach(p=>{s+=`<g data-path="${p}"><rect class="jband" x="8" y="${JY[p]-36}" width="984" height="80" rx="10"/><text class="jlane" x="18" y="${JY[p]-22}">${JNAME[p]}</text>`;
+    JL[p].forEach((t,i)=>{if(i){const a=JPOS[JL[p][i-1].id],b=JPOS[t.id];s+=`<line class="jln" data-to="${t.id}" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;}});s+='</g>';});
+  const a8=JPOS.A8,c9=JPOS.C9,b7=JPOS.B7,c4=JPOS.C4;
+  s+=`<path id="linkA" class="jlink" d="M${a8[0]},${a8[1]+14} C${a8[0]},150 ${c9[0]},150 ${c9[0]},${c9[1]-14}"/><text class="jlk" x="${a8[0]-6}" y="104" text-anchor="end">trained model → C8–C9</text>`;
+  s+=`<path id="linkB" class="jlink" d="M${b7[0]},${b7[1]+14} C${b7[0]},215 ${c4[0]},190 ${c4[0]},${c4[1]-14}"/><text class="jlk" x="${c4[0]+250}" y="212" text-anchor="middle">index → C3–C5</text>`;
+  Object.keys(JL).forEach(p=>JL[p].forEach(t=>{const [x,y]=JPOS[t.id];
+    s+=`<g class="jn" data-id="${t.id}" data-path="${p}" transform="translate(${x},${y})" tabindex="0" role="button" aria-label="${t.id} ${esc(t.short)}"><circle r="13"/><text class="id" y="3">${t.id}</text><text class="lbl" y="29">${esc(t.short)}</text></g>`;}));
+  s+=`<g id="pkt" data-path="A" style="transform:translate(${JPOS.A1[0]}px,${JPOS.A1[1]}px)"><circle class="halo" r="12"/><circle class="core" r="6.5"/></g></svg>`;
+  $('#jsvgbox').innerHTML=s;
+  document.querySelectorAll('.jn').forEach(n=>jn[n.dataset.id]=n);
+  jlines=[...document.querySelectorAll('.jln')];
+  const svg=$('#jsvgbox');
+  svg.addEventListener('click',e=>{const n=e.target.closest('.jn');if(n)go(n.dataset.id,false);});
+  svg.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const n=e.target.closest('.jn');if(n){e.preventDefault();go(n.dataset.id,false);}}});
+})();
+function jstop(){clearInterval(JT);JT=null;$('#jplay').textContent='▶ Play the journey';}
+function jstart(){
+  clearInterval(JT);if(idx>=STAGES.length-1)go('A1',false,true);
+  $('#jplay').textContent='⏸ Pause';
+  JT=setInterval(()=>{if(idx>=STAGES.length-1){jstop();return;}go(STAGES[idx+1].id,false,true);},+$('#jspeed').value);
+}
+$('#jplay').addEventListener('click',()=>{if(JT)jstop();else jstart();});
+$('#jrestart').addEventListener('click',()=>{go('A1',false,true);jstart();});
+$('#jspeed').addEventListener('change',()=>{if(JT)jstart();});
+function paintJourney(){
+  const s=STAGES[idx],[x,y]=JPOS[s.id],pk=$('#pkt');
+  pk.style.transform=`translate(${x}px,${y}px)`;pk.setAttribute('data-path',s.id[0]);
+  STAGES.forEach((t,i)=>{jn[t.id].classList.toggle('act',i===idx);jn[t.id].classList.toggle('vis',i<idx);});
+  jlines.forEach(l=>l.classList.toggle('done',STAGES.findIndex(t=>t.id===l.dataset.to)<=idx));
+  $('#linkA').classList.toggle('on',s.id==='C8'||s.id==='C9');
+  $('#linkB').classList.toggle('on',['C3','C4','C5'].includes(s.id));
+  const cap=$('#jcap');cap.setAttribute('data-path',s.id[0]);
+  $('.jt',cap).innerHTML=`<b>${s.id}</b>${esc(s.title)}`;$('.jd',cap).textContent=flowText(s);
+  cap.classList.remove('flash');void cap.offsetWidth;cap.classList.add('flash');
+}
+let idx=0;
+const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+function go(id,scroll,auto){
+  if(!auto)jstop();
+  const i=STAGES.findIndex(s=>s.id===id);if(i<0)return;idx=i;render();
+  if(scroll)stage.scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'});
+}
+function render(){
+  TIMERS.forEach(t=>{clearTimeout(t);clearInterval(t);});TIMERS=[];
+  const s=STAGES[idx];CUR=s.id;
+  document.querySelectorAll('.step').forEach(b=>b.setAttribute('aria-current',String(b.dataset.id===s.id)));
+  paintJourney();
+  const prev=STAGES[idx-1],next=STAGES[idx+1],pos=STAGES.filter(x=>x.p===s.p),n=pos.indexOf(s)+1;
+  stage.dataset.path=s.p;
+  stage.innerHTML=`<div class="s-head"><span class="badge">${s.id}</span><div class="s-title"><h2>${esc(s.title)}</h2><p>${esc(s.sum)}</p></div>
+    <div class="nav"><button type="button" class="btn" id="prev" ${prev?'':'disabled'}>← ${prev?prev.id:''}</button><button type="button" class="btn solid" id="next" ${next?'':'disabled'}>${next?next.id+' →':'End'}</button></div></div>
+    <div class="shape"><span>Data shape</span><code>${esc(s.shape)}</code></div>
+    <section class="lab"><h3>Try it · step ${n} of ${pos.length} on path ${s.p}</h3><div id="viz"></div></section>
+    <div class="cols"><section><h3>What happens</h3><p>${esc(s.what)}</p></section>
+    <section><h3>Parameters that matter</h3><dl>${s.params.map(p=>`<dt>${esc(p[0])}</dt><dd><b>${esc(p[1])}</b> · ${esc(p[2])}</dd>`).join('')}</dl></section>
+    <section><h3>System level</h3><ul>${s.sys.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section></div>`;
+  $('#prev').onclick=()=>prev&&go(prev.id,true);$('#next').onclick=()=>next&&go(next.id,true);
+  V[s.id]($('#viz'));
+  try{history.replaceState(null,'','#'+s.id);}catch(e){}
+}
+document.addEventListener('keydown',e=>{
+  if(/INPUT|TEXTAREA|SELECT/.test((e.target.tagName||'')))return;
+  if(e.key==='ArrowRight'&&STAGES[idx+1])go(STAGES[idx+1].id,false);
+  if(e.key==='ArrowLeft'&&STAGES[idx-1])go(STAGES[idx-1].id,false);
+});
+let start='A1';try{const h=(location.hash||'').slice(1);if(STAGES.some(s=>s.id===h))start=h;}catch(e){}
+go(start,false);
+})();
+</script>
+</body>
+</html>
