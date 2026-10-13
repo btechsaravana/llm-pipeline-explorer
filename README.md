@@ -5,9 +5,9 @@ It runs from raw training text through the transformer, your document pipeline a
 
 One self-contained HTML file. No build step, no dependencies, no backend.
 
-<!-- After enabling GitHub Pages, put your link here:
-**Live demo:** https://YOUR-USERNAME.github.io/YOUR-REPO/
--->
+**Live demo:** https://saravana-llm.netlify.app/
+
+Jump straight to a stage, e.g. [C4 Retrieve](https://saravana-llm.netlify.app/#C4) or [C9 Decode](https://saravana-llm.netlify.app/#C9).
 
 ---
 
