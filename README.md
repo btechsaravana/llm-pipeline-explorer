@@ -1,7 +1,7 @@
-# LLM Pipeline Explorer
+# LLM & RAG Explained
 
-**An interactive, animated map of how a question becomes an answer from your own data.**
-It runs from raw training text through the transformer, your document pipeline and retrieval, to the final streamed answer.
+**Interactive and animated: see how a language model is built, how your data is indexed, and how a question becomes an answer.**
+It follows one question from raw training text through the transformer, your document pipeline and retrieval, to the final streamed answer.
 
 One self-contained HTML file. No build step, no dependencies, no backend.
 
